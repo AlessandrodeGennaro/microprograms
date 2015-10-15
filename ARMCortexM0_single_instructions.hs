@@ -1,0 +1,11 @@
+--
+-- Single instructions
+--
+
+-- LDRB (register) according to ARMv6-M instruction specifications 
+--loadRegisterByte :: Microprogram m => Register m -> Register m -> Register m -> m ()
+--loadRegisterByte register1 register2 register3 = do		-- Ignore Offset Shift, because (shift_t, shift_n) = (SRType_LSL, 0); and if amount is 0 there is no shift shift_n = amount
+--    address <- alu register1 register2 add -- Definitely add since, add = TRUE in specifications
+--    value <- readMemory address
+--    writeRegister register3 value
+--    fetchNextOpcode
