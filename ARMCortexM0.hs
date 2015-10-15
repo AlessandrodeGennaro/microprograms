@@ -1,5 +1,8 @@
 {-# LANGUAGE TypeFamilies #-}
 
+-- NOTES
+-- In this implementation of the ARMv6-M 11 groups of instructions are present.
+
 module Microprogram (
 	module Control.Monad,
     Microprogram (..), Address (..), Value (..),
@@ -8,7 +11,8 @@ module Microprogram (
 
 import Control.Monad
 
--- Type synonyms let us avoid the pain of converting values to addresses, yet improve readability
+-- Type synonyms let us avoid the pain of converting values to addresses, yet 
+-- improve readability
 type Address = Int
 type Value   = Int
 
@@ -18,13 +22,17 @@ type Value   = Int
 class Monad m => Microprogram m where
     data Register m
     data ComputationType m
-    pc, opcode    :: Register m
-    add           :: ComputationType m
-    readMemory    :: Address -> m Value
-    writeMemory   :: Address -> Value -> m ()
-    readRegister  :: Register m -> m Value
-    writeRegister :: Register m -> Value -> m ()
-    compute       :: Register m -> Register m -> ComputationType m -> m Value
+    data MemoryOperation m
+    pc, ir, sp            :: Register m
+    add, sub              :: ComputationType m
+    store, load           :: MemoryOperation m
+    burstLoad, burstStore :: MemoryOperation m
+    memoryUnit            :: Address -> Register m -> MemoryOperation m -> m ()
+    readRegister          :: Register m -> m Value
+    writeRegister         :: Register m -> Value -> m ()
+    alu                   :: Register m -> Register m | Address -> ComputationType m -> m Value
+    --readMemory    :: Address -> m Value
+    --writeMemory   :: Address -> Value -> m ()
 
 -- Increment the value stored in a register
 increment :: Microprogram m => Register m -> m ()
@@ -32,40 +40,133 @@ increment register = do
     value <- readRegister register
     writeRegister register (value + 1) -- TODO: change flags
 
--- Increment the program counter and fetch the value it points to; used for
--- fetching instruction opcodes and immediate arguments
-fetchArgument :: Microprogram m => m Value
-fetchArgument = do
+-- Decrement the value stored in a register
+decrement :: Microprogram m => Register m -> m ()
+decrement register = do
+    value <- readRegister register
+    writeRegister register (value - 1) -- TODO: change flags
+
+-- Increment the program counter and fetch the address where the offset is stored
+fetchAddressImmediate :: Microprogram m => m Address
+fetchAddressImmediate = do
     increment pc
-    address <- readRegister pc
-    readMemory address
+    readRegister pc
 
 -- Fetch the next instruction opcode and store it in the opcode register
-fetchNextOpcode :: Microprogram m => m ()
-fetchNextOpcode = do
-    value <- fetchArgument
-    writeRegister opcode value
+incAndFetchInstruction :: Microprogram m => m ()
+incAndFetchInstruction = do
+    addressNextInstruction <- fetchAddressImmediate
+    memoryUnit <- addressNextInstruction ir load
 
--- Model behaviour of the Arithmetic Logic Unit
--- compute :: Microprogram m => Register m -> Register m -> ComputationType m -> m Value
--- compute = alu
+-- Fetch the next instruction opcode and store it in the opcode register
+fetchInstruction :: Microprogram m => m ()
+fetchInstruction = do
+    addressNextInstruction <- readRegister pc
+    memoryUnit <- addressNextInstruction ir load
 
--- register1 register2 cType = do
---     operand1 <- readRegister register1
---     operand2 <- readRegister register2
---     alu operand1 operand2 cType
+-- Pop operation. The value is stored into a register
+pop :: Microprogram m => Register m -> m Value
+pop register = do
+    stackAddress <- readRegister sp
+    memoryUnit stackAddress register load
+    decrement sp
 
--- ALU operation Rn to Rn (PCIU -> IFU ALU)
+-- Push operation. The value is stored into th
+push :: Microprogram m => Register m -> m Value
+push register = do
+    stackAddress <- readRegister sp
+    memoryUnit stackAddress register store
+    increment sp
+
+--
+-- 11 POs model of the ARMv6-M
+--
+
+-- Unconditional branch - #123 to PC Branch - (PCIU -> IFU -> ALU -> IFU2)
+uncBranch :: Microprogram m => m ()
+uncBranch = do
+    addressOffset <- fetchAddressImmediate
+    addressNextInst <- alu pc addressOffset add
+    memoryUnit addressNextInst ir load
+
+-- Arithmetic operations - #123 to Rn - (PCIU -> IFU -> PCIU2 -> IFU2 IFU -> ALU -> IFU2)
+-- Operation between a register and an immediate.
+arithOps :: Microprogram m => Register m -> ComputationType m -> m ()
+arithOps register cType = do
+    addressImmediate <- fetchAddressImmediate
+    result <- alu register addressImmediate cType
+    writeRegister register result
+    incAndFetchInstruction
+
+-- Arithmetic operation - Rn to Rn - (PCIU -> IFU ALU)
+-- Operation between two registers
 rnToRn :: Microprogram m => Register m -> Register m -> ComputationType m -> m ()
 rnToRn register1 register2 cType = do
-    result <- compute register1 register2 cType
+    result <- alu register1 register2 cType
     writeRegister register1 result
-    fetchNextOpcode
+    incAndFetchInstruction
 
--- LDRB (register) according to ARMv6-M instruction specifications 
-loadRegisterByte :: Microprogram m => Register m -> Register m -> Register m -> m ()
-loadRegisterByte register1 register2 register3 = do		-- Ignore Offset Shift, because (shift_t, shift_n) = (SRType_LSL, 0); and if amount is 0 there is no shift shift_n = amount
-    address <- compute register1 register2 add -- Definitely add since, add = TRUE in specifications
-    value <- readMemory address
-    writeRegister register3 value
-    fetchNextOpcode
+-- Branch operation - Rn to PC (ALU -> IFU)
+-- Address of the branch contained inside a register
+rnToPc :: Microprogram m => Register m -> m ()
+rnToPC register = do
+    addressNextInst <- alu pc register add
+    writeRegister pc addressNextInst
+    fetchInstruction
+
+-- Load/Store operations - Ldr Str Imm - (PCIU -> IFU -> ALU -> MAU -> PCIU2 -> IFU2)
+-- Load & store where target = register + offset
+-- TODO: (PCIU -> IFU -> ALU -> MAU IFU -> PCIU2 -> IFU2) ?
+ldrStrImm :: Microprogram m => register m -> MemoryOperation m -> m ()
+ldrStrImm register baseRegister mOp = do
+    addressOffset <- fetchAddressImmediate
+    addressMemory <- alu baseRegister addressOffset add
+    value <- readRegister register
+    memoryUnit addressMemory value mOp
+    incAndFetchInstruction
+
+-- Memory burst operation - Ldm Stm - (PCIU -> IFU MAU)
+-- Load/Store a bunch of register from/to the memory
+ldmStm :: Microprogram m => Register m -> Register m -> MemoryOperation m -> m ()
+ldmStm baseRegister mOp = do
+    addressMem <- readRegister baseRegister
+    memoryUnit addressMem R 0 mOp
+    incAndFetchInstruction
+
+-- Load/Store register addressing mode - Str Ldr Reg Pop - (PCIU -> IFU ALU -> MAU)
+strLdrRegPop :: Microprogram m => Register m -> Register m -> Register m -> MemoryOperation m -> m ()
+strLdrRegPop regDest regBase regOffset mOp = do
+    memAddress <- alu regBase regOffset add
+    memoryUnit memAddress regDest mOp
+    incAndFetchInstruction
+
+-- Pop - Pop PC - (MAU -> IFU)
+-- TODO: If PC is not the target of the pop, where is the PC incremented?
+-- As it is done, I assume to model a POP into the Program Counter
+popPc :: Microprogram m => m ()
+popPc = do
+    pop pc
+    fetchInstruction
+
+-- No Operation - Nop - (PCIU -> PCIU2 -> IFU)
+-- TODO: why are two PCIU needed?
+nop :: Microprogram m => m ()
+nop = do
+    fetchNextInstruction
+
+-- Branch from memory - Ldr Reg PC - (ALU -> MAU -> IFU) 
+-- Address taken from the memory (register addressing mode)
+branchMemory :: MicroProgram m => Register m -> Register m -> m ()
+branchMemory regBase regOffset = do
+    memLocation <- alu regBase regOffset add
+    memoryUnit memLocation pc load
+    fetchInstruction
+
+-- Branch from memory - Ldr Reg PC - (ALU -> MAU -> IFU) 
+-- Address taken from the memory (immediate addressing mode)
+branchMemory :: MicroProgram m => Register m -> Register m -> m ()
+branchMemory regBase = do
+    addressOffset <- fetchAddressImmediate
+    memLocation <- alu regBase addressOffset add
+    memoryUnit memLocation pc load
+    fetchInstruction
