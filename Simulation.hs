@@ -25,14 +25,15 @@ instance Monad Simulation where
                           in h p'
 
 instance ARMCortexM0 Simulation where
-    data Register Simulation = R Int | RegisterPC | RegisterOpcode | RegisterSP
-    data ComputationType Simulation = AddOp | SubOp
+    data Register Simulation = R Int | RegisterPC | RegisterOpcode | RegisterSP | RegisterDummy
+    data ComputationType Simulation = AddRegs | AddMem
     data MemoryOperation Simulation = LoadOp | StoreOp | BurstLoad | BurstStore
     pc         = RegisterPC
     ir         = RegisterOpcode
     sp         = RegisterSP
-    add        = AddOp
-    sub        = SubOp
+    dummy      = RegisterDummy
+    addRegs    = AddRegs
+    addMem     = AddMem
     load       = LoadOp
     store      = StoreOp
     burstLoad  = BurstLoad
@@ -44,20 +45,37 @@ instance ARMCortexM0 Simulation where
 --    writeMemory address value = Simulation $
 --        \(Processor mem regs) -> ((), Processor (Map.insert address value mem) regs)
 
+    -- read a register and return the value stored
     readRegister register = Simulation $
         \(Processor mem regs) -> (Map.findWithDefault 0 (registerID register) regs, Processor mem regs)
 
+    -- write a valure into a register
     writeRegister register value = Simulation $
         \(Processor mem regs) -> ((), Processor mem (Map.insert (registerID register) value regs))
 
+    -- emulate memory unit behaviour. Supports following operations:
+    --    - load a register from a memory location
+    --    - store a register into a memory location
+    --    - burst load of registers R0->7 from memory
+    --    - burst store of registers R0->7 into memory
     memoryUnit address register mOp = Simulation $
 	\(Processor mem regs) -> case (mOp) of 
 					-- Load operation
 					LoadOp -> ((), Processor mem (Map.insert (registerID register) (Map.findWithDefault 0 address mem) regs))
 					-- Store operation
 					StoreOp ->  ((), Processor (Map.insert address (Map.findWithDefault 0 (registerID register) regs) mem) regs)
-					BurstLoad ->  ((), Processor mem regs) -- TODO implementating burst load
-					BurstStore ->  ((), Processor mem regs) -- TODO implementating burst store
+					BurstLoad ->  ((), Processor mem regs) -- TODO implementing burst load
+					BurstStore ->  ((), Processor mem regs) -- TODO implementing burst store
+
+    -- emulate alu behaviour. Supports following operations:
+    --    - add up two registers
+    --    - add up a register and a location of a memory
+    alu register1 register2 address cType = Simulation $
+	\(Processor mem regs) -> case (cType) of 
+					-- REG + REG operation
+					AddRegs -> ((Map.findWithDefault 0 (registerID register1) regs) + (Map.findWithDefault 0 (registerID register2) regs), Processor mem regs)
+					-- REG + MEM operation
+					AddMem -> ((Map.findWithDefault 0 (registerID register1) regs) + (Map.findWithDefault 0 address mem), Processor mem regs)
 
 registerID :: Register Simulation -> Int
 registerID (R n)          = n

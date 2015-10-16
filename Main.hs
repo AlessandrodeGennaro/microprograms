@@ -6,14 +6,27 @@ import qualified Data.IntMap.Strict as Map
 
 program :: Simulation ()
 program = do
-	--writeMemory 100 200
-	writeRegister (R 0) 1234
+
+	-- read/write register test
+	writeRegister (R 0) 100
 	value <- readRegister (R 0)
-	writeRegister (R 1) (value + 1)
-	
-	-- memoryUnit test
-        memoryUnit 0 (R 1) store
-        
+	increment (R 0)
+	writeRegister (R 1) value
+	writeRegister (R 2) 500
+
+	-- memoryUnit store test
+        memoryUnit 0 (R 2) store
+
+	-- aluRegs test
+	value2 <- alu (R 0) (R 1) 0 addRegs
+	writeRegister (R 3) value2
+
+	-- aluMem test
+	value3 <- alu (R 0) (R 1) 0 addMem
+	writeRegister (R 4) value3
+
+	-- memoryUnit load test
+	memoryUnit 0 (R 6) load
 
 	--let programAddress = 10000
 	--writeRegister pc programAddress

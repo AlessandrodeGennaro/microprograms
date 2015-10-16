@@ -28,15 +28,14 @@ class Monad m => ARMCortexM0 m where
     data Register m
     data ComputationType m
     data MemoryOperation m
-    pc, ir, sp            :: Register m
-    add, sub              :: ComputationType m
+    pc, ir, sp, dummy     :: Register m
+    addRegs, addMem       :: ComputationType m
     store, load           :: MemoryOperation m
     burstLoad, burstStore :: MemoryOperation m
     memoryUnit            :: Address -> Register m -> MemoryOperation m -> m ()
     readRegister          :: Register m -> m Value
     writeRegister         :: Register m -> Value -> m ()
-    alu                   :: Register m -> Register m -> ComputationType m -> m Value
-    aluMem                :: Register m -> Address -> ComputationType m -> m Value
+    alu                   :: Register m -> Register m -> Address -> ComputationType m -> m Value
     --readMemory    :: Address -> m Value
     --writeMemory   :: Address -> Value -> m ()
 
@@ -92,7 +91,7 @@ push register = do
 uncBranch :: ARMCortexM0 m => m ()
 uncBranch = do
     offsetLocation <- fetchAddressImmediate
-    nextInstrLocation <- aluMem pc offsetLocation add
+    nextInstrLocation <- alu pc dummy offsetLocation addMem
     memoryUnit nextInstrLocation ir load
 
 -- Arithmetic operations - #123 to Rn - (PCIU -> IFU -> PCIU2 -> IFU2 IFU -> ALU -> IFU2)
@@ -100,7 +99,7 @@ uncBranch = do
 arithOpsImm :: ARMCortexM0 m => Register m -> ComputationType m -> m ()
 arithOpsImm redDest cType = do
     immLocation <- fetchAddressImmediate
-    result <- aluMem redDest immLocation cType
+    result <- alu redDest dummy immLocation cType
     writeRegister redDest result
     incAndFetchInstruction
 
@@ -108,7 +107,7 @@ arithOpsImm redDest cType = do
 -- Operation between two registers
 arithOpsReg :: ARMCortexM0 m => Register m -> Register m -> ComputationType m -> m ()
 arithOpsReg regDest regOp cType = do
-    result <- alu regDest regOp cType
+    result <- alu regDest regOp 0 cType
     writeRegister regDest result
     incAndFetchInstruction
 
@@ -116,7 +115,7 @@ arithOpsReg regDest regOp cType = do
 -- Address of the branch contained inside a register
 branchReg :: ARMCortexM0 m => Register m -> m ()
 branchReg regOffset = do
-    nextInstrLocation <- alu pc regOffset add
+    nextInstrLocation <- alu pc regOffset 0 addRegs
     writeRegister pc nextInstrLocation
     fetchInstruction
 
@@ -126,7 +125,7 @@ branchReg regOffset = do
 memoryImm :: ARMCortexM0 m => Register m -> Register m -> MemoryOperation m -> m ()
 memoryImm regDest regBase mOp = do
     offsetLocation <- fetchAddressImmediate
-    memLocation <- aluMem regBase offsetLocation add
+    memLocation <- alu regBase dummy offsetLocation addMem
     memoryUnit memLocation regDest mOp
     incAndFetchInstruction
 
@@ -141,7 +140,7 @@ memoryBurst regBase mOp = do
 -- Load/Store register addressing mode - Str Ldr Reg Pop - (PCIU -> IFU ALU -> MAU)
 memoryReg :: ARMCortexM0 m => Register m -> Register m -> Register m -> MemoryOperation m -> m ()
 memoryReg regDest regBase regOffset mOp = do
-    memLocation <- alu regBase regOffset add
+    memLocation <- alu regBase regOffset 0 addRegs
     memoryUnit memLocation regDest mOp
     incAndFetchInstruction
 
@@ -163,7 +162,7 @@ nop = do
 -- Address taken from the memory (register addressing mode)
 branchMemReg :: ARMCortexM0 m => Register m -> Register m -> m ()
 branchMemReg regBase regOffset = do
-    memTargetJump <- alu regBase regOffset add
+    memTargetJump <- alu regBase regOffset 0 addRegs
     memoryUnit memTargetJump pc load
     fetchInstruction
 
@@ -172,6 +171,6 @@ branchMemReg regBase regOffset = do
 branchMemImm :: ARMCortexM0 m => Register m -> m ()
 branchMemImm regBase = do
     offsetLocation <- fetchAddressImmediate
-    memTargetJump <- aluMem regBase offsetLocation add
+    memTargetJump <- alu regBase dummy offsetLocation addMem
     memoryUnit memTargetJump pc load
     fetchInstruction
