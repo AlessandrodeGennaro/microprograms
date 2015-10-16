@@ -4,8 +4,8 @@
 -- In this implementation of the ARMv6-M 11 groups of instructions are present.
 
 module ARMCortexM0 (
-	module Control.Monad,
-    ARMCortexM0 (..), Address (..), Value (..),
+    module Control.Monad,
+    ARMCortexM0 (..), Address, Value,
     -- basic operations
     increment, decrement, fetchAddressImmediate, incAndFetchInstruction, 
     fetchInstruction, pop, push,

@@ -2,7 +2,7 @@
 
 module Microprogram (
 	module Control.Monad,
-    Microprogram (..), Address (..), Value (..),
+    Microprogram (..), Address, Value,
     increment, fetchArgument, fetchNextOpcode, load, store, jump
     ) where
 
