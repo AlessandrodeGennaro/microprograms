@@ -92,6 +92,7 @@ uncBranch :: ARMCortexM0 m => m ()
 uncBranch = do
     offsetLocation <- fetchAddressImmediate
     nextInstrLocation <- alu pc dummy offsetLocation addMem
+    writeRegister pc nextInstrLocation
     memoryUnit nextInstrLocation ir load
 
 -- Arithmetic operations - #123 to Rn - (PCIU -> IFU -> PCIU2 -> IFU2 IFU -> ALU -> IFU2)

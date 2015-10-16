@@ -25,11 +25,11 @@ instance Monad Simulation where
                           in h p'
 
 instance ARMCortexM0 Simulation where
-    data Register Simulation = R Int | RegisterPC | RegisterOpcode | RegisterSP | RegisterDummy
+    data Register Simulation = R Int | RegisterPC | RegisterIR | RegisterSP | RegisterDummy
     data ComputationType Simulation = AddRegs | AddMem
     data MemoryOperation Simulation = LoadOp | StoreOp | BurstLoad | BurstStore
     pc         = RegisterPC
-    ir         = RegisterOpcode
+    ir         = RegisterIR
     sp         = RegisterSP
     dummy      = RegisterDummy
     addRegs    = AddRegs
@@ -80,5 +80,5 @@ instance ARMCortexM0 Simulation where
 registerID :: Register Simulation -> Int
 registerID (R n)          = n
 registerID RegisterPC     = -1
-registerID RegisterOpcode = -2
+registerID RegisterIR     = -2
 registerID RegisterSP     = -3
