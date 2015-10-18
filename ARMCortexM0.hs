@@ -138,7 +138,7 @@ memoryImm regDest regBase mOp = do
 memoryBurst :: ARMCortexM0 m => Register m -> MemoryOperation m -> m ()
 memoryBurst regBase mOp = do
     memLocation <- readRegister regBase
-    memoryUnit memLocation sp mOp -- TODO sp represents a dummy register in this case
+    memoryUnit memLocation sp mOp
     incAndFetchInstruction
 
 -- Load/Store register addressing mode - Str Ldr Reg Pop - (PCIU -> IFU ALU -> MAU)

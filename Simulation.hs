@@ -101,7 +101,7 @@ instance ARMCortexM0 Simulation where
     writeRegister register value = Simulation $
         \p -> ((), updateRegister p register value)
 
-    -- emulate memory unit behaviour. Supports following operations:
+    -- emulate memory unit behaviour
     memoryUnit address register mOp = Simulation $
         \p @ (Processor mem regs) -> case (mOp) of
             -- Load operation
@@ -111,7 +111,7 @@ instance ARMCortexM0 Simulation where
             BurstLoad ->  ((), Processor mem regs) -- TODO implementing burst load
             BurstStore ->  ((), Processor mem regs) -- TODO implementing burst store
 
-    -- emulate alu behaviour. Supports following operations:
+    -- emulate alu behaviour
     alu cType = Simulation $
         \p -> case (cType) of
             -- REG1 + REG2 operation
@@ -135,7 +135,7 @@ instance ARMCortexM0 Simulation where
             -- REG increment operation
             (IncReg reg) -> ((lookupRegister p reg) + 1,p)
             -- REG decrement operation
-            (DecReg reg) -> ((lookupRegister p reg) + 1,p)
+            (DecReg reg) -> ((lookupRegister p reg) - 1,p)
 
 registerID :: Register Simulation -> Int
 registerID (R n)          = n
