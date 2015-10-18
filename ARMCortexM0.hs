@@ -72,14 +72,14 @@ incAndFetchInstruction = do
     addressNextInstruction <- fetchAddressImmediate
     memoryUnit addressNextInstruction ir load
 
--- Pop operation. The value is stored into a register
+-- Pop operation. Memory pointed by the Stack Pointer
 pop :: ARMCortexM0 m => Register m -> m ()
 pop register = do
+    decrement sp
     spAddress <- readRegister sp
     memoryUnit spAddress register load
-    decrement sp
 
--- Push operation. The value is stored into th
+-- Push operation. The value is stored into memory pointed by the Stack Pointer
 push :: ARMCortexM0 m => Register m -> m ()
 push register = do
     stackAddress <- readRegister sp
