@@ -1,6 +1,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
-module Simulation (Processor (..), Simulation (..), Register (..), ComputationType (..), MemoryOperation (..), simulate) where
+module Simulation (Processor (..), Simulation (..), Register (..),
+                    ComputationType (..), MemoryOperation (..), simulate) where
 
 import ARMCortexM0
 import Data.IntMap.Strict (IntMap)
@@ -25,7 +26,8 @@ updateMemory (Processor mem regs) a v =
     Processor (Map.insert a v mem) regs
 
 instance Show Processor where
-    show (Processor mem regs) = "Memory = " ++ show mem ++ "\nRegister bank = " ++ show regs ++ "\n"
+    show (Processor mem regs) = "Memory = " ++ show mem ++ "\nRegister bank = "
+                                ++ show regs ++ "\n"
 
 data Simulation a = Simulation (Processor -> (a, Processor))
 
@@ -33,18 +35,19 @@ simulate :: Simulation a -> Processor -> (a, Processor)
 simulate (Simulation f) processor = f processor
 
 instance Functor Simulation where
-    fmap f (Simulation s) = Simulation $ \p -> 
+    fmap f (Simulation s) = Simulation $ \p ->
                               let (a, p') = s p
                               in (f a, p')
 
-instance Applicative Simulation where
-    pure a = Simulation $ \p -> (a, p)
-    Simulation f <*> Simulation a = Simulation $ \p ->
-                                      let (g, p') = f p
-                                          (b, p'') = a p'
-                                      in (g b, p'')
+--instance Applicative Simulation where
+--    pure a = Simulation $ \p -> (a, p)
+--    Simulation f <*> Simulation a = Simulation $ \p ->
+--                                      let (g, p') = f p
+--                                          (b, p'') = a p'
+--                                      in (g b, p'')
+
 instance Monad Simulation where
-    return = pure
+    --return = pure
     Simulation f >>= g = Simulation $ \p ->
                           let
                             (a, p') = f p
@@ -52,18 +55,34 @@ instance Monad Simulation where
                           in h p'
 
 instance ARMCortexM0 Simulation where
-    data Register Simulation = R Int | RegisterPC | RegisterIR | RegisterSP | RegisterDummy
-    data ComputationType Simulation = AddRegs | AddMem
-    -- data ComputationType Simulation = AddRegs (Register Simulation) (Register Simulation)
-    --                                 | AddMem (Register Simulation) Address
-
+    data Register Simulation = R Int | RegisterPC | RegisterIR | RegisterSP
+    data ComputationType Simulation =
+          AddRegs (Register Simulation) (Register Simulation)
+        | SubRegs (Register Simulation) (Register Simulation)
+        | AddMem (Register Simulation) Address
+        | SubMem (Register Simulation) Address
+        | AddImm (Register Simulation)
+        | SubImm (Register Simulation)
+        | IncReg (Register Simulation)
+        | DecReg (Register Simulation)
     data MemoryOperation Simulation = LoadOp | StoreOp | BurstLoad | BurstStore
+    -- standard registers
     pc         = RegisterPC
     ir         = RegisterIR
     sp         = RegisterSP
-    dummy      = RegisterDummy
+    -- operations between registers
     addRegs    = AddRegs
+    subRegs    = SubRegs
+    -- operations between register and memory (2nd operand)
     addMem     = AddMem
+    subMem     = SubMem
+    -- operations between register and immediate (inside IR reg)
+    addImm     = AddImm
+    subImm     = SubImm
+    -- operations with one register
+    incReg     = IncReg
+    decReg     = DecReg
+    -- memory operations
     load       = LoadOp
     store      = StoreOp
     burstLoad  = BurstLoad
@@ -83,28 +102,40 @@ instance ARMCortexM0 Simulation where
         \p -> ((), updateRegister p register value)
 
     -- emulate memory unit behaviour. Supports following operations:
-    --    - load a register from a memory location
-    --    - store a register into a memory location
-    --    - burst load of registers R0->7 from memory
-    --    - burst store of registers R0->7 into memory
     memoryUnit address register mOp = Simulation $
-        \p @ (Processor mem regs) -> case (mOp) of 
+        \p @ (Processor mem regs) -> case (mOp) of
             -- Load operation
             LoadOp -> ((), updateRegister p register $ lookupMemory p address)
             -- Store operation
-            StoreOp ->  ((), Processor (Map.insert address (Map.findWithDefault 0 (registerID register) regs) mem) regs)
+            StoreOp ->  ((), updateMemory p address $ lookupRegister p register)
             BurstLoad ->  ((), Processor mem regs) -- TODO implementing burst load
             BurstStore ->  ((), Processor mem regs) -- TODO implementing burst store
 
     -- emulate alu behaviour. Supports following operations:
-    --    - add up two registers
-    --    - add up a register and a location of a memory
-    alu register1 register2 address cType = Simulation $
-        \(Processor mem regs) -> case (cType) of 
-            -- REG + REG operation
-            AddRegs -> ((Map.findWithDefault 0 (registerID register1) regs) + (Map.findWithDefault 0 (registerID register2) regs), Processor mem regs)
+    alu cType = Simulation $
+        \p -> case (cType) of
+            -- REG1 + REG2 operation
+            (AddRegs reg1 reg2) -> ((lookupRegister p reg1) +
+                                    (lookupRegister p reg2), p)
+            -- REG1 - REG2 operation
+            (SubRegs reg1 reg2) -> ((lookupRegister p reg1) -
+                                    (lookupRegister p reg2), p)
             -- REG + MEM operation
-            AddMem -> ((Map.findWithDefault 0 (registerID register1) regs) + (Map.findWithDefault 0 address mem), Processor mem regs)
+            (AddMem reg1 addr) -> ((lookupRegister p reg1) +
+                                    (lookupMemory p addr), p)
+            -- REG - MEM operation
+            (SubMem reg1 addr) -> ((lookupRegister p reg1) -
+                                    (lookupMemory p addr), p)
+            -- REG + IMM operation
+            (AddImm reg) -> ((lookupRegister p reg) +
+                            (lookupMemory p (lookupRegister p pc)), p)
+            -- REG - IMM operation
+            (SubImm reg) -> ((lookupRegister p reg) -
+                            (lookupMemory p (lookupRegister p pc)), p)
+            -- REG increment operation
+            (IncReg reg) -> ((lookupRegister p reg) + 1,p)
+            -- REG decrement operation
+            (DecReg reg) -> ((lookupRegister p reg) + 1,p)
 
 registerID :: Register Simulation -> Int
 registerID (R n)          = n

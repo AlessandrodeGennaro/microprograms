@@ -18,11 +18,11 @@ program = do
     memoryUnit 0 (R 2) store
 
     -- aluRegs test
-    value2 <- alu (R 0) (R 1) 0 addRegs
+    value2 <- alu $ addRegs (R 0) (R 1)
     writeRegister (R 3) value2
 
     -- aluMem test
-    value3 <- alu (R 0) (R 1) 0 addMem
+    value3 <- alu $ addMem (R 0) 0
     writeRegister (R 4) value3
 
     -- memoryUnit load test
@@ -38,30 +38,29 @@ armBranchImmediate = do
     let programAddress = 1000
     let offset = 20
     let nextInstruction = 9999
-    let targetMemory = 30   
-    
+
     -- unconditional branch: PC = PC + IMM
-    writeRegister pc programAddress 
+    writeRegister pc programAddress
 
     writeRegister (R 31) offset
     memoryUnit (programAddress + 1) (R 31) store
 
-    writeRegister (R 32) nextInstruction 
+    writeRegister (R 32) nextInstruction
     memoryUnit (programAddress + 1 + offset) (R 32) store
 
     uncBranch
 
+-- Arithmetic operation: Reg = Reg + Imm
 armArithRegImm :: Simulation ()
 armArithRegImm = do
     let programAddress = 1000
 
-    -- Arithmetic operation: Reg = Reg + Imm    
-    writeRegister pc programAddress 
+    writeRegister pc programAddress
     writeRegister (R 31) 111
     writeRegister (R 32) 100
     memoryUnit (programAddress + 1) (R 32) store
-    
-    arithOpsImm (R 31) addMem
+
+    arithOpsImm (R 60) (addImm (R 31))
 
 
 armArithRegs :: Simulation ()
@@ -69,11 +68,11 @@ armArithRegs = do
     let programAddress = 1000
 
     -- Arithmetic operation: Reg1 = Reg1 + Reg2
-    writeRegister pc programAddress 
+    writeRegister pc programAddress
     writeRegister (R 31) 333
     writeRegister (R 32) 233
 
-    arithOpsReg (R 31) (R 32) addRegs
+    arithOpsReg (R 60) (addRegs (R 31) (R 32))
 
 armBranchReg :: Simulation ()
 armBranchReg = do
@@ -82,22 +81,22 @@ armBranchReg = do
     let nextInstruction = 9999
 
     -- Unconditional Branch: PC = PC + REG
-    writeRegister pc programAddress 
+    writeRegister pc programAddress
 
     writeRegister (R 31) offset
 
-    writeRegister (R 32) nextInstruction 
+    writeRegister (R 32) nextInstruction
     memoryUnit (programAddress + offset) (R 32) store
 
     branchReg (R 31)
-    
+
 armMemRegImm :: Simulation ()
 armMemRegImm = do
     let programAddress = 1000
-    let targetMemory = 30   
+    let targetMemory = 30
 
     -- Memory Operation: RegDest = LOAD/STORE[ RegBase + Immediate ]
-    writeRegister pc programAddress 
+    writeRegister pc programAddress
 
     writeRegister (R 32) 666
     memoryUnit targetMemory (R 32) store
@@ -110,18 +109,18 @@ armMemRegs :: Simulation ()
 armMemRegs = do
 
     let programAddress = 1000
-    let targetMemory = 30   
+    let targetMemory = 30
 
     -- Memory Operation: RegDest = LOAD/STORE[ RegBase + RegOffset ]
-    writeRegister pc programAddress 
+    writeRegister pc programAddress
 
     writeRegister (R 32) 888
     memoryUnit targetMemory (R 32) store
     writeRegister (R 32) 14
     writeRegister (R 33) 16
-    
+
     memoryReg (R 31) (R 32) (R 33) load
-        
+
 
 
 processor = Processor (Map.empty) (Map.empty)
@@ -153,4 +152,3 @@ main = do
             5 -> simulate armMemRegImm armCortexM0
             6 -> simulate armMemRegs armCortexM0
     putStrLn $ ">New processor:\n" ++ show newArmCortexM0
-

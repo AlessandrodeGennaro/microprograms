@@ -7,16 +7,16 @@ module ARMCortexM0 (
     module Control.Monad,
     ARMCortexM0 (..), Address, Value,
     -- basic operations
-    increment, decrement, fetchAddressImmediate, incAndFetchInstruction, 
+    increment, decrement, fetchAddressImmediate, incAndFetchInstruction,
     fetchInstruction, pop, push,
     -- instructions available
-    uncBranch, arithOpsImm, arithOpsReg, branchReg, memoryImm, memoryBurst,
+    uncBranch, branchReg, memoryImm, memoryBurst, arithOpsImm, arithOpsReg,
     memoryReg, branchPop, nop, branchMemReg, branchMemImm
     ) where
 
 import Control.Monad
 
--- Type synonyms let us avoid the pain of converting values to addresses, yet 
+-- Type synonyms let us avoid the pain of converting values to addresses, yet
 -- improve readability
 type Address = Int
 type Value   = Int
@@ -28,28 +28,31 @@ class Monad m => ARMCortexM0 m where
     data Register m
     data ComputationType m
     data MemoryOperation m
-    pc, ir, sp, dummy     :: Register m
-    addRegs, addMem       :: ComputationType m
+    pc, ir, sp            :: Register m
+    addRegs, subRegs      :: Register m -> Register m -> ComputationType m
+    addMem, subMem        :: Register m -> Address -> ComputationType m
+    addImm, subImm        :: Register m -> ComputationType m
+    incReg, decReg        :: Register m -> ComputationType m
     store, load           :: MemoryOperation m
     burstLoad, burstStore :: MemoryOperation m
     memoryUnit            :: Address -> Register m -> MemoryOperation m -> m ()
     readRegister          :: Register m -> m Value
     writeRegister         :: Register m -> Value -> m ()
-    alu                   :: Register m -> Register m -> Address -> ComputationType m -> m Value
+    alu                   :: ComputationType m -> m Value
     --readMemory    :: Address -> m Value
     --writeMemory   :: Address -> Value -> m ()
 
 -- Increment the value stored in a register
 increment :: ARMCortexM0 m => Register m -> m ()
 increment register = do
-    value <- readRegister register
-    writeRegister register (value + 1) -- TODO: change flags
+    incValue <- alu (incReg register)
+    writeRegister register incValue
 
 -- Decrement the value stored in a register
 decrement :: ARMCortexM0 m => Register m -> m ()
 decrement register = do
-    value <- readRegister register
-    writeRegister register (value - 1) -- TODO: change flags
+    decValue <- alu (decReg register)
+    writeRegister register decValue
 
 -- Increment the program counter and fetch the address where the offset is stored
 fetchAddressImmediate :: ARMCortexM0 m => m Address
@@ -91,24 +94,24 @@ push register = do
 uncBranch :: ARMCortexM0 m => m ()
 uncBranch = do
     offsetLocation <- fetchAddressImmediate
-    nextInstrLocation <- alu pc dummy offsetLocation addMem
+    nextInstrLocation <- alu (addMem pc offsetLocation)
     writeRegister pc nextInstrLocation
     memoryUnit nextInstrLocation ir load
 
 -- Arithmetic operations - #123 to Rn - (PCIU -> IFU -> PCIU2 -> IFU2 IFU -> ALU -> IFU2)
 -- Operation between a register and an immediate.
 arithOpsImm :: ARMCortexM0 m => Register m -> ComputationType m -> m ()
-arithOpsImm redDest cType = do
-    immLocation <- fetchAddressImmediate
-    result <- alu redDest dummy immLocation cType
-    writeRegister redDest result
+arithOpsImm regDest cType = do
+    increment pc
+    result <- alu cType
+    writeRegister regDest result
     incAndFetchInstruction
 
 -- Arithmetic operation - Rn to Rn - (PCIU -> IFU ALU)
 -- Operation between two registers
-arithOpsReg :: ARMCortexM0 m => Register m -> Register m -> ComputationType m -> m ()
-arithOpsReg regDest regOp cType = do
-    result <- alu regDest regOp 0 cType
+arithOpsReg :: ARMCortexM0 m => Register m -> ComputationType m -> m ()
+arithOpsReg regDest cType = do
+    result <- alu cType
     writeRegister regDest result
     incAndFetchInstruction
 
@@ -116,7 +119,7 @@ arithOpsReg regDest regOp cType = do
 -- Address of the branch contained inside a register
 branchReg :: ARMCortexM0 m => Register m -> m ()
 branchReg regOffset = do
-    nextInstrLocation <- alu pc regOffset 0 addRegs
+    nextInstrLocation <- alu (addRegs pc regOffset)
     writeRegister pc nextInstrLocation
     fetchInstruction
 
@@ -126,7 +129,7 @@ branchReg regOffset = do
 memoryImm :: ARMCortexM0 m => Register m -> Register m -> MemoryOperation m -> m ()
 memoryImm regDest regBase mOp = do
     offsetLocation <- fetchAddressImmediate
-    memLocation <- alu regBase dummy offsetLocation addMem
+    memLocation <- alu (addMem regBase offsetLocation)
     memoryUnit memLocation regDest mOp
     incAndFetchInstruction
 
@@ -141,7 +144,7 @@ memoryBurst regBase mOp = do
 -- Load/Store register addressing mode - Str Ldr Reg Pop - (PCIU -> IFU ALU -> MAU)
 memoryReg :: ARMCortexM0 m => Register m -> Register m -> Register m -> MemoryOperation m -> m ()
 memoryReg regDest regBase regOffset mOp = do
-    memLocation <- alu regBase regOffset 0 addRegs
+    memLocation <- alu (addRegs regBase regOffset)
     memoryUnit memLocation regDest mOp
     incAndFetchInstruction
 
@@ -159,19 +162,19 @@ nop :: ARMCortexM0 m => m ()
 nop = do
     incAndFetchInstruction
 
--- Branch from registers - Ldr Reg PC - (ALU -> MAU -> IFU) 
+-- Branch from registers - Ldr Reg PC - (ALU -> MAU -> IFU)
 -- Address taken from the memory (register addressing mode)
 branchMemReg :: ARMCortexM0 m => Register m -> Register m -> m ()
 branchMemReg regBase regOffset = do
-    memTargetJump <- alu regBase regOffset 0 addRegs
+    memTargetJump <- alu (addRegs regBase regOffset)
     memoryUnit memTargetJump pc load
     fetchInstruction
 
--- Branch from memory - Ldr Imm PC - (PCIU -> IFU -> ALU -> MAU -> IFU2) 
+-- Branch from memory - Ldr Imm PC - (PCIU -> IFU -> ALU -> MAU -> IFU2)
 -- Address taken from the memory (immediate addressing mode)
 branchMemImm :: ARMCortexM0 m => Register m -> m ()
 branchMemImm regBase = do
     offsetLocation <- fetchAddressImmediate
-    memTargetJump <- alu regBase dummy offsetLocation addMem
+    memTargetJump <- alu (addMem regBase offsetLocation)
     memoryUnit memTargetJump pc load
     fetchInstruction
