@@ -1,8 +1,8 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module Microprogram_v2 (
-	module Control.Monad,
-    Microprogram_v2 (..), Address, Value,
+    module Control.Monad,
+    Microprogram_v2 (..), Address, Value, Register (..), ComputationType (..),
     increment, decrement, fetchAddressImmediate, fetchInstruction,
     incAndFetchInstruction, pop, push
     ) where

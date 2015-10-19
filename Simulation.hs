@@ -1,8 +1,10 @@
 {-# LANGUAGE TypeFamilies #-}
 
-module Simulation (Processor (..), Simulation (..), Register (..),
-                    ComputationType (..), simulate) where
+module Simulation (
+    Processor (..), Simulation (..), Register (..), ComputationType(..),
+    simulate) where
 
+import Control.Monad
 import ARMCortexM0_v2
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as Map
@@ -25,29 +27,22 @@ updateMemory :: Processor -> Address -> Value -> Processor
 updateMemory (Processor mem regs) a v =
     Processor (Map.insert a v mem) regs
 
-updateMemoryBurst :: Processor -> Address -> Processor
-updateMemoryBurst p addr =
-    Map.insert (addr)   (lookupRegister p (r 0)) mem
-    Map.insert (addr+1) (lookupRegister p (r 1)) mem
-    Map.insert (addr+2) (lookupRegister p (r 2)) mem
-    Map.insert (addr+3) (lookupRegister p (r 3)) mem
-    Map.insert (addr+4) (lookupRegister p (r 4)) mem
-    Map.insert (addr+5) (lookupRegister p (r 5)) mem
-    Map.insert (addr+6) (lookupRegister p (r 6)) mem
-    Map.insert (addr+7) (lookupRegister p (r 7)) mem
-    Processor mem regs
+updateMemoryMulti :: Processor -> [(Address, Value)] -> Processor
+updateMemoryMulti = foldr (\(a, v) p -> updateMemory p a v)
 
-updateRegisterBurst :: Processor -> Address -> Processor
-updateRegisterBurst (Processor mem regs) addr =
-    Map.insert (r 0) (Map.findWithDefault 0 (addr) mem) regs
-    Map.insert (r 1) (Map.findWithDefault 0 (addr+1) mem) regs
-    Map.insert (r 2) (Map.findWithDefault 0 (addr+2) mem) regs
-    Map.insert (r 3) (Map.findWithDefault 0 (addr+3) mem) regs
-    Map.insert (r 4) (Map.findWithDefault 0 (addr+4) mem) regs
-    Map.insert (r 5) (Map.findWithDefault 0 (addr+5) mem) regs
-    Map.insert (r 6) (Map.findWithDefault 0 (addr+6) mem) regs
-    Map.insert (r 7) (Map.findWithDefault 0 (addr+7) mem) regs
-    (Processor mem regs)
+updateRegisterMulti :: Processor -> [(Register Simulation, Value)] -> Processor
+updateRegisterMulti = foldr (\(r, v) p -> updateRegister p r v)
+
+copyRegistersToMemory :: Processor -> Address -> Processor
+copyRegistersToMemory p addr = updateMemoryMulti p (zip [addr..addr+7] values)
+  where
+    values = map (lookupRegister p . R) [0..7]
+
+copyMemoryToRegisters :: Processor -> Address -> Processor
+copyMemoryToRegisters p addr = updateRegisterMulti p (zip regs values)
+  where
+    regs   = map R [0..7]
+    values = map (lookupMemory p) [addr..addr+7]
 
 instance Show Processor where
     show (Processor mem regs) = "Memory = " ++ show mem ++ "\nRegister bank = "
@@ -63,22 +58,19 @@ instance Functor Simulation where
                               let (a, p') = s p
                               in (f a, p')
 
---instance Applicative Simulation where
---    pure a = Simulation $ \p -> (a, p)
---    Simulation f <*> Simulation a = Simulation $ \p ->
---                                      let (g, p') = f p
---                                          (b, p'') = a p'
---                                      in (g b, p'')
+instance Applicative Simulation where
+   pure  = return
+   (<*>) = ap
 
 instance Monad Simulation where
-    --return = pure
+    return a = Simulation $ \p -> (a, p)
     Simulation f >>= g = Simulation $ \p ->
                           let
                             (a, p') = f p
                             Simulation h = g a
                           in h p'
 
-instance ARMCortexM0_v2 Simulation where
+instance Microprogram_v2 Simulation where
     data Register Simulation = R Int | RegisterPC | RegisterIR | RegisterSP
     data ComputationType Simulation =
           AddRegs (Register Simulation) (Register Simulation)
@@ -93,15 +85,7 @@ instance ARMCortexM0_v2 Simulation where
     pc         = RegisterPC
     ir         = RegisterIR
     sp         = RegisterSP
-    -- operations between registers
     addRegs    = AddRegs
-    subRegs    = SubRegs
-    -- operations between register and memory (2nd operand)
-    addRegMem     = AddRegMem
-    subRegMem     = SubRegMem
-    -- operations between register and immediate (inside IR reg)
-    addRegImm     = AddRegImm
-    subRegImm     = SubRegImm
     -- operations with one register
     incReg     = IncReg
     decReg     = DecReg
@@ -150,13 +134,23 @@ instance ARMCortexM0_v2 Simulation where
         \p @ (Processor mem regs) ->
             ((), updateRegister p reg $ lookupMemory p addr)
 
+instance ARMCortexM0_v2 Simulation where
+    -- operations between registers
+    subRegs    = SubRegs
+    -- operations between register and memory (2nd operand)
+    addRegMem     = AddRegMem
+    subRegMem     = SubRegMem
+    -- operations between register and immediate (inside IR reg)
+    addRegImm     = AddRegImm
+    subRegImm     = SubRegImm
+
     -- store memory burst (R0-7) operation
     writeMemoryBurst addr = Simulation $
-        \p -> updateMemoryBurst p addr
+        \p -> ((), copyRegistersToMemory p addr)
 
     -- load memory burst (R0-7) operation
     readMemoryBurst addr = Simulation $
-        \p -> updateRegisterBurst p addr
+        \p -> ((), copyMemoryToRegisters p addr)
 
 
 registerID :: Register Simulation -> Int

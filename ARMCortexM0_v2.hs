@@ -5,7 +5,8 @@
 
 module ARMCortexM0_v2 (
     --module Control.Monad,
-    ARMCortexM0_v2 (..),
+    ARMCortexM0_v2 (..), Microprogram_v2 (..), Register (..), ComputationType (..),
+    Address, Value,
     -- instructions available
     uncBranch, branchReg, storeImm, loadImm, storeBurst, loadBurst, arithOpsImm,
     arithOpsReg, storeReg, loadReg, branchPop, nop, branchMemReg, branchMemImm
