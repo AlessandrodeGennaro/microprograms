@@ -21,9 +21,6 @@ import Control.Monad
 type Address = Int
 type Value   = Int
 
--- Enumerated types for computational unit
--- data ComputationType = Add | Sub | Mul | Div | Shl | Shr deriving (Enum)
-
 class Monad m => ARMCortexM0 m where
     data Register m
     data ComputationType m
@@ -142,7 +139,8 @@ memoryBurst regBase mOp = do
     incAndFetchInstruction
 
 -- Load/Store register addressing mode - Str Ldr Reg Pop - (PCIU -> IFU ALU -> MAU)
-memoryReg :: ARMCortexM0 m => Register m -> Register m -> Register m -> MemoryOperation m -> m ()
+memoryReg :: ARMCortexM0 m => Register m -> Register m -> Register m ->
+                              MemoryOperation m -> m ()
 memoryReg regDest regBase regOffset mOp = do
     memLocation <- alu (addRegs regBase regOffset)
     memoryUnit memLocation regDest mOp

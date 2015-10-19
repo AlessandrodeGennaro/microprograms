@@ -1,4 +1,4 @@
-import ARMCortexM0
+import ARMCortexM0_v2
 import Simulation
 
 import Data.IntMap.Strict (IntMap)
@@ -15,18 +15,18 @@ program = do
     writeRegister (R 2) 500
 
     -- memoryUnit store test
-    memoryUnit 0 (R 2) store
+    writeMemory 0 (R 2)
 
     -- aluRegs test
     value2 <- alu $ addRegs (R 0) (R 1)
     writeRegister (R 3) value2
 
     -- aluMem test
-    value3 <- alu $ addMem (R 0) 0
+    value3 <- alu $ addRegMem (R 0) 0
     writeRegister (R 4) value3
 
     -- memoryUnit load test
-    memoryUnit 0 (R 6) load
+    readMemory 0 (R 6)
 
 
 -- *****************************************************************************
@@ -43,10 +43,10 @@ armBranchImmediate = do
     writeRegister pc programAddress
 
     writeRegister (R 31) offset
-    memoryUnit (programAddress + 1) (R 31) store
+    writeMemory (programAddress + 1) (R 31)
 
     writeRegister (R 32) nextInstruction
-    memoryUnit (programAddress + 1 + offset) (R 32) store
+    writeMemory (programAddress + 1 + offset) (R 32)
 
     uncBranch
 
@@ -58,9 +58,9 @@ armArithRegImm = do
     writeRegister pc programAddress
     writeRegister (R 31) 111
     writeRegister (R 32) 100
-    memoryUnit (programAddress + 1) (R 32) store
+    writeMemory (programAddress + 1) (R 32)
 
-    arithOpsImm (R 60) (addImm (R 31))
+    arithOpsImm (R 60) (addRegImm (R 31))
 
 
 armArithRegs :: Simulation ()
@@ -86,7 +86,7 @@ armBranchReg = do
     writeRegister (R 31) offset
 
     writeRegister (R 32) nextInstruction
-    memoryUnit (programAddress + offset) (R 32) store
+    writeMemory (programAddress+offset) (R 32)
 
     branchReg (R 31)
 
@@ -99,11 +99,11 @@ armMemRegImm = do
     writeRegister pc programAddress
 
     writeRegister (R 32) 666
-    memoryUnit targetMemory (R 32) store
+    writeMemory targetMemory (R 32)
     writeRegister (R 32) 14
-    memoryUnit (programAddress + 1) (R 32) store
+    writeMemory (programAddress + 1) (R 32)
     writeRegister (R 32) 16
-    memoryImm (R 31) (R 32) load
+    loadImm (R 31) (R 32)
 
 armMemRegs :: Simulation ()
 armMemRegs = do
@@ -115,16 +115,14 @@ armMemRegs = do
     writeRegister pc programAddress
 
     writeRegister (R 32) 888
-    memoryUnit targetMemory (R 32) store
+    writeMemory targetMemory (R 32)
     writeRegister (R 32) 14
     writeRegister (R 33) 16
 
-    memoryReg (R 31) (R 32) (R 33) load
-
-
+    loadReg (R 31) (R 32) (R 33)
 
 processor = Processor (Map.empty) (Map.empty)
-armCortexM0 = Processor (Map.empty) (Map.empty)
+armProcessor = Processor (Map.empty) (Map.empty)
 
 main = do
     putStrLn $ "\nTest Basic functions:\n"
@@ -143,12 +141,12 @@ main = do
     number' <- getLine
     let number = read number' :: Int
 
-    putStrLn $ ">Initial processor:\n" ++ show armCortexM0
-    let (value, newArmCortexM0) = case (number) of
-            1 -> simulate armBranchImmediate armCortexM0
-            2 -> simulate armArithRegImm armCortexM0
-            3 -> simulate armArithRegs armCortexM0
-            4 -> simulate armBranchReg armCortexM0
-            5 -> simulate armMemRegImm armCortexM0
-            6 -> simulate armMemRegs armCortexM0
-    putStrLn $ ">New processor:\n" ++ show newArmCortexM0
+    putStrLn $ ">Initial processor:\n" ++ show armProcessor
+    let (value, newARMCortexM0_v2) = case (number) of
+            1 -> simulate armBranchImmediate armProcessor
+            2 -> simulate armArithRegImm armProcessor
+            3 -> simulate armArithRegs armProcessor
+            4 -> simulate armBranchReg armProcessor
+            5 -> simulate armMemRegImm armProcessor
+            6 -> simulate armMemRegs armProcessor
+    putStrLn $ ">New processor:\n" ++ show newARMCortexM0_v2
