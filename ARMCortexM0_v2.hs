@@ -91,9 +91,9 @@ loadBurst regBase = do
 
 -- Load/Store register addressing mode - Str Ldr Reg Pop
 storeReg :: ARMCortexM0_v2 m => Register m -> Register m -> Register m -> m ()
-storeReg regDest regBase regOffset = do
+storeReg reg regBase regOffset = do
     memLocation <- alu (addRegs regBase regOffset)
-    writeMemoryBurst memLocation
+    writeMemory memLocation reg
     incAndFetchInstruction
 
 loadReg :: ARMCortexM0_v2 m => Register m -> Register m -> Register m -> m ()
@@ -102,7 +102,7 @@ loadReg regDest regBase regOffset = do
     readMemory memLocation regDest
     incAndFetchInstruction
 
--- Pop - Pop PC - (MAU -> IFU)
+-- Pop PC - (MAU -> IFU)
 -- As it is done, I assume to model a POP into the Program Counter
 branchPop :: ARMCortexM0_v2 m => m ()
 branchPop = do

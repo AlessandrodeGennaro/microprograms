@@ -122,6 +122,73 @@ armMemRegs = do
 
     loadReg (R 31) (R 32) (R 33)
 
+armStoreBurst :: Simulation ()
+armStoreBurst = do
+    let targetMemory = 10
+
+    writeRegister (R 0) 8
+    writeRegister (R 1) 7
+    writeRegister (R 2) 6
+    writeRegister (R 3) 5
+    writeRegister (R 4) 4
+    writeRegister (R 5) 3
+    writeRegister (R 6) 2
+    writeRegister (R 7) 1
+
+    writeRegister (R 10) targetMemory
+    storeBurst (R 10)
+
+armLoadBurst :: Simulation ()
+armLoadBurst = do
+    let targetMemory = 10
+    writeRegister (R 20) targetMemory
+
+    writeRegister (R 0) 0
+    writeRegister (R 1) 8
+    storeReg (R 1) (R 20) (R 0)
+
+    increment (R 0)
+    decrement (R 1)
+    storeReg (R 1) (R 20) (R 0)
+
+    increment (R 0)
+    decrement (R 1)
+    storeReg (R 1) (R 20) (R 0)
+
+    increment (R 0)
+    decrement (R 1)
+    storeReg (R 1) (R 20) (R 0)
+
+    increment (R 0)
+    decrement (R 1)
+    storeReg (R 1) (R 20) (R 0)
+
+    increment (R 0)
+    decrement (R 1)
+    storeReg (R 1) (R 20) (R 0)
+
+    increment (R 0)
+    decrement (R 1)
+    storeReg (R 1) (R 20) (R 0)
+
+    increment (R 0)
+    decrement (R 1)
+    storeReg (R 1) (R 20) (R 0)
+
+    loadBurst (R 20)
+
+armNop :: Simulation()
+armNop = do
+    let programmAddress = 1000
+    let newInstruction = 9999
+
+    writeRegister (R 5) newInstruction
+    writeRegister pc programmAddress
+
+    writeMemory (programmAddress +1) (R 5)
+
+    nop
+
 processor = Processor (Map.empty) (Map.empty)
 armProcessor = Processor (Map.empty) (Map.empty)
 
@@ -137,7 +204,10 @@ main = do
     putStrLn $ "3) Arithmetic operation: Reg1 = Reg1 + Reg2;"
     putStrLn $ "4) Unconditional Branch: PC = PC + REG;"
     putStrLn $ "5) Memory Operation: RegDest = LOAD/STORE[ RegBase + Immediate ];"
-    putStrLn $ "6) Memory Operation: RegDest = LOAD/STORE[ RegBase + RegOffset ];\n"
+    putStrLn $ "6) Memory Operation: RegDest = LOAD/STORE[ RegBase + RegOffset ];"
+    putStrLn $ "7) Store Burst of first 8 registers into memory pointed by a Reg;"
+    putStrLn $ "8) Load Burst of first 8 registers into memory pointed by a Reg;"
+    putStrLn $ "9) Nop instruction;\n"
     putStrLn $ "Insert the number of the instruction you want to simulate: "
     number' <- getLine
     let number = read number' :: Int
@@ -150,4 +220,7 @@ main = do
             4 -> simulate armBranchReg armProcessor
             5 -> simulate armMemRegImm armProcessor
             6 -> simulate armMemRegs armProcessor
+            7 -> simulate armStoreBurst armProcessor
+            8 -> simulate armLoadBurst armProcessor
+            9 -> simulate armNop armProcessor
     putStrLn $ ">New processor:\n" ++ show newARMCortexM0_v2
