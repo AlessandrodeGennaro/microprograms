@@ -93,7 +93,6 @@ adcT1 rm rdn = do
 -- ADD (immediate) - Encoding T1
 add_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
 add_ImmT1 rn rd imm32  = do -- TODO imm32 should be extended from imm3 in the decoding function
-    increment pc
     result <- alu (adcRegImm rn imm32 0)
     writeRegister rd result
     updateN result[31]
