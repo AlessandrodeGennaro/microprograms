@@ -246,3 +246,87 @@ ldrb_ImmT1 rt rn = do
     offset_addr = alu (addRegImm rn)
     readMemory offset_addr rt -- TODO: this should read one single byte and extend it
     incAndFetchInstruction
+
+-- LDRB (register) - Encoding T1
+ldrb_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+ldrb_RegT1 rt rn rm = do
+    offset <- alu (shlRegVal rm 0)
+    offset_addr <- alu (addRegVal rn offset)
+    readMemory offset_addr rt -- TODO: this should read one single byte and extend it
+    incAndFetchInstruction
+
+-- LDRH (immediate) - Encoding T1
+ldrh_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
+ldrh_ImmT1 rt rn = do
+    increment pc
+    offset_addr = alu (addRegImm rn)
+    readMemory offset_addr rt -- TODO: this should read two bytes and extend it
+    incAndFetchInstruction
+
+-- LDRH (register) - Encoding T1
+ldrh_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+ldrh_RegT1 rt rn rm = do
+    offset <- alu (shlRegVal rm 0)
+    offset_addr <- alu (addRegVal rn offset)
+    readMemory offset_addr rt -- TODO: this should read two bytes and extend it
+    incAndFetchInstruction
+
+-- LDRSB (register) - Encoding T1
+ldrsb_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+ldrsb_RegT1 rt rn rm = do
+    offset <- alu (shlRegVal rm 0)
+    offset_addr <- alu (addRegVal rn offset)
+    readMemory offset_addr rt -- TODO: this should read one single byte and extend it with sign
+    incAndFetchInstruction
+
+-- LDRSH (register) - Encoding T1
+ldrsh_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+ldrsh_RegT1 rt rn rm = do
+    offset <- alu (shlRegVal rm 0)
+    offset_addr <- alu (addRegVal rn offset)
+    readMemory offset_addr rt -- TODO: this should read two bytes and extend it with sign
+    incAndFetchInstruction
+
+-- LSL (immediate) - Encoding T1
+lsl_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
+lsl_ImmT1 rd rm = do
+    increment pc
+    result <- alu(shlRegImm rm)
+    writeRegister rd result
+    incAndFetchInstruction
+
+-- LSL (register) - Encoding T1
+lsl_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+lsl_RegT1 rd rn rm = do
+    result <- alu(shlRegs rn rm) -- TODO only first byte is counted in rm
+    writeRegister rd result
+    incAndFetchInstruction
+
+-- LSR (immediate) - Encoding T1
+lsr_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
+lsr_ImmT1 rd rm = do
+    increment pc
+    result <- alu(shrRegImm rm)
+    writeRegister rd result
+    incAndFetchInstruction
+
+-- LSR (register) - Encoding T1
+lsr_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+lsr_RegT1 rd rn rm = do
+    result <- alu(shrRegs rn rm) -- TODO only first byte is counted in rm
+    writeRegister rd result
+    incAndFetchInstruction
+
+-- MOV (immediate) - Encoding T1
+mov_ImmT1 :: ARMv6_M m => Register m -> m ()
+mov_ImmT1 rd = do
+    address <- fetchAddressImmediate
+    readMemory address rd
+    incAndFetchInstruction
+
+-- MOV (register) - Encoding T1
+mov_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
+mov_RegT1 rd rm = do
+    result <- readRegister rm
+    write register rd result
+    incAndFetchInstruction
