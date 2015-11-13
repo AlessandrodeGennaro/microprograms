@@ -23,6 +23,7 @@ class Microprogram_v2 m => ARMv6_M m where
     addRegMem, subRegMem   :: Register m -> Address -> ComputationType m
     addRegImm, subRegImm   :: Register m -> ComputationType m
     addRegVal, subRegVal   :: Register m -> Value -> ComputationType m
+    mulRegs                :: Register m -> Register m -> ComputationType m
     -- bitwise operations
     andRegs, xorRegs       :: Register m -> Register m -> ComputationType m
     andRegVal, xorRegVal   :: Register m -> Value -> ComputationType m
@@ -329,4 +330,56 @@ mov_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
 mov_RegT1 rd rm = do
     result <- readRegister rm
     write register rd result
+    incAndFetchInstruction
+
+-- MUL (register) - Encoding T1
+mul_T1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+mul_T1 rdm rn = do
+    result <- alu (mulRegs rdm rn)
+    writeRegister rdm result
+    incAndFetchInstruction
+
+-- MVN (register) - Encoding T1
+mvn_RegT1 :: ARMv6_M m => Register m -> Register m ->  m ()
+mvn_RegT1 rd rm = do
+    shifted <- alu (shlRegVal rm 0)
+    result <- alu (notVal shifted)
+    writeRegister rd result
+    incAndFetchInstruction
+
+-- NEG (alias for RSBS)
+neg :: ARMv6_M m => Register m ->  Register m -> m ()
+neg rd rm = do
+    rsbs_ImmT1 rd rn 0
+
+-- NOP already modelled inside basic architecture
+
+-- ORR (register) - Encoding T1
+orr_RegT1 ::  ARMv6_M m => Register m -> Register m -> m ()
+orr_RegT1 rdn rm = do
+    shifted <- alu (shlRegVal rm 0)
+    result <- alu (orRegVal rdn shifted)
+    writeRegister rdn result
+    incAndFetchInstruction
+
+-- REV - Encoding T1
+rev_T1 ::  ARMv6_M m => Register m -> Register m -> m ()
+rev_T1 rd rm = do
+    result <- reverseResult word rm -- TODO reverse bytes ordering
+    writeRegister rd result
+    incAndFetchInstruction
+
+-- REV16 - Encoding T1
+rev16_T1 :: ARMv6_M m => Register m -> Register m -> m ()
+rev16_T1 rd rm = do
+    result <- reverseResult hword rm -- TODO reverse bytes ordering of half-word
+    writeRegister rd result
+    incAndFetchInstruction
+
+-- REVSH - Encoding T1
+revsh_T1 :: ARMv6_M m => Register m -> Register m -> m ()
+revsh_T1 rd rm = do
+    result <- signExtend 31 8 rm 7 0
+    result <- movBits 7 0 rm 15 8
+    writeRegister rd result
     incAndFetchInstruction
