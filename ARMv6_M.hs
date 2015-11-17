@@ -28,6 +28,7 @@ class Microprogram_v2 m => ARMv6_M m where
     -- arithmetic operations
     adcRegs                :: Register m -> Register m -> Value -> ComputationType m
     adcRegImm              :: Register m -> Value -> Value -> ComputationType m
+    adcImms                :: Value -> Value -> Value -> ComputationType m
     adcRegMem              :: Register m -> Address -> Value -> ComputationType m
     mulRegs                :: Register m -> Register m -> ComputationType m
     -- bitwise operations
@@ -36,9 +37,11 @@ class Microprogram_v2 m => ARMv6_M m where
     orRegImm               :: Register m -> Value -> ComputationType m
     notReg                 :: Register m -> ComputationType m
     notImm                 :: Value -> ComputationType m
-    -- shifts TODO shifts always produce carry flag
+    -- shifts operations
     shrRegs, shlRegs       :: Register m -> Register m -> Value -> ComputationType m
     shrRegImm, shlRegImm   :: Register m -> Value -> Value -> ComputationType m
+    rorRegs, rolRegs       :: Register m -> Register m -> Value -> ComputationType m
+    rorRegImm, rolRegImm   :: Register m -> Value -> Value -> ComputationType m
     -- additional functions implemented
     readMemoryBurst         :: Address -> m ()
     writeMemoryBurst        :: Address -> m ()
@@ -61,6 +64,8 @@ class Microprogram_v2 m => ARMv6_M m where
     dataMemoryBarrier                 :: Value -> m ()
     dataSynchronisationBarrier        :: Value -> m ()
     instructionSynchronizationBarrier :: Value -> m ()
+    -- send event function
+    hint_SendEvent          :: m ()
 
 -- *****************************************************************************
 -- *                          ARMv6-M Basic functions                          *
@@ -119,17 +124,13 @@ reverseRegister :: ARMv6_M m => ReverseType m -> Register m -> m Value
 reverseRegister rType reg = do
     -- TODO implement this function
 
+-- This procedure performs a send event hint
+hint_SendEvent :: ARMv6_M m => m ()
+    -- TODO unclear from Specification
+
 -- *****************************************************************************
 -- *                          ARMv6-M Specification                            *
 -- *****************************************************************************
-
--- Memory burst operation - Ldm Stm
--- Load/Store a bunch of register from/to the memory
-storeBurst :: ARMv6_M m => Register m -> m ()
-storeBurst regBase = do
-    memLocation <- readRegister regBase
-    writeMemoryBurst memLocation
-    incAndFetchInstruction
 
 -- ADC (register) - Encoding T1
 adc_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
@@ -557,4 +558,85 @@ revsh_T1 rd rm = do
     result <- signExtendOutVal 31 8 rm 7 0
     result <- movBits 7 0 rm 15 8
     writeRegister rd result
+    incAndFetchInstruction
+
+-- ROR (register) - Encoding T1
+ror_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+ror_RegT1 rm rdn = do
+    shift_n <- uInt rm 7 0
+    result <- alu(rorRegImm rdn shift_n apsr[29])
+    writeRegister rdn result
+    updateN result[31]
+    updateZ result
+    updateC carry
+    incAndFetchInstruction
+
+-- RSB  (immediate) - Encoding T1
+rsb_ImmT1 :: ARMv6_M m => Register m -> Register m -> Value -> m ()
+rsb_ImmT1 rn rd imm32 = do
+    negatedReg <- alu (notReg rn)
+    result <- alu (adcRegImm negatedReg imm32 1)
+    writeRegister rd result
+    updateN result[31]
+    updateZ result
+    updateC carry
+    updateV overflow
+    incAndFetchInstruction
+
+-- SBC (register) - Encoding T1
+sbc_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
+sbc_RegT1 rm rdn = do
+    shifted <- alu (shlRegImm rm 0 apsr[29])
+    negatedShift <- alu (notImm shifted)
+    result <- alu (adcRegImm rdn negatedShift apsr[29])
+    writeRegister rdn result
+    updateN result[31]
+    updateZ result
+    updateC carry
+    updateV overflow
+    incAndFetchInstruction
+
+-- SEV - Encoding T1
+sev_T1 :: ARMv6_M m => m ()
+sev_T1 = do
+    hint_SendEvent
+    incAndFetchInstruction
+
+-- Memory burst operation - Ldm Stm
+-- Load/Store a bunch of register from/to the memory
+-- STM, STMIA, STMEA - Encoding T1
+stm_T1 :: ARMv6_M m => Register m -> m ()
+storeBurst regBase = do
+    memLocation <- readRegister regBase
+    writeMemoryBurst memLocation
+    incAndFetchInstruction
+
+-- STR (immediate) - Encoding T1
+str_ImmT1 :: ARMv6_M m => Value -> Register m -> Register m -> m ()
+str_ImmT1 imm32 rn rt = do
+    offset_addr <- alu (adcRegImm rn imm32 0)
+    writeMemory offset_addr rt
+    incAndFetchInstruction
+
+-- STR (register) - Encoding T1
+str_RegT1 :: ARMv6_M m => -> Register m -> Register m -> Register m -> m ()
+str_RegT1 rm rn rt = do
+    offset <- alu (shlRegImm rm 0 apsr[29])
+    address <- alu (adcRegImm rn offset 0)
+    writeMemory address rt
+    incAndFetchInstruction
+
+-- STRB (immediate) - Encoding T1
+strb_ImmT1 :: ARMv6_M m => Value -> Register m -> Register m -> m ()
+strb_ImmT1 imm32 rn rt = do
+    offset_addr <- alu (adcRegImm rn imm32 0)
+    writeMemory offset_addr rt -- TODO worth adding number of bytes to transfer
+    incAndFetchInstruction
+
+-- STRB (register) - Encoding T1
+strb_RegT1 :: ARMv6_M m => Value -> Register m -> Register m -> m ()
+strb_RegT1 imm32 rn rt = do
+    offset <- alu (shlRegImm rm 0 apsr[29])
+    address <- alu (adcRegImm rn offset 0)
+    writeMemory address rt -- TODO Add number of bytes to transfer 1
     incAndFetchInstruction
