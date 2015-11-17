@@ -640,3 +640,73 @@ strb_RegT1 imm32 rn rt = do
     address <- alu (adcRegImm rn offset 0)
     writeMemory address rt -- TODO Add number of bytes to transfer 1
     incAndFetchInstruction
+
+-------------------------- Paulius Tuesday 17th ----------------------
+
+-- SXTH - Encoding T1
+sxth_T1 :: ARMv6_M m => Register m -> Register m -> m ()
+sxth_T1 rd rm = do
+    rotated   <- alu (rorRegImm rm 0)
+    extension <- signExtendOutImm 15 0 rotated 32
+    writeRegister rd extension
+    incAndFetchInstruction
+
+-- SXTB - Encoding T1
+sxtb_T1 :: ARMv6_M m => Register m -> Register m -> m ()
+sxtb_T1 rd rm = do
+    rotated   <- alu (rorRegImm rm 0)
+    extension <- signExtendOutImm 7 0 rotated 32
+    writeRegister rd extension
+    incAndFetchInstruction
+
+-- SVC - Encoding T1
+svc_T1  :: ARMv6_M m => m ()
+svc_T1 imm32 = do
+    callSupervisor
+    incAndFetchInstruction
+
+-- SUB (SP - immediate) - Encoding T1
+sub_T1  :: ARMv6_M m => m ()
+sub_T1  imm32 = do
+    not <- alu (notVal imm32)
+    result <- alu (adcRegImm sp not 1)
+    writeRegister sp result
+
+-- SUB (register) - Encoding T1
+sub_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+sub_RegT1 rm rn rd = do
+    shifted     <- alu (shlRegImm rm 0 apsr[29])
+    notshifted  <- alu (notVal shifted)
+    result      <- alu (adcRegImm rn notshifted 1)
+    writeRegister rd result
+    updateN result[31]
+    updateZ result
+    updateC carry
+    updateV overflow
+    incAndFetchInstruction
+
+-- SUB (immediate) - Encoding T1
+sub_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
+sub_ImmT1 rn rd imm32 = do
+    not     <- alu (notVal imm32)
+    result  <- alu (adcRegImm rn not 1)
+    writeRegister rd result
+    updateN result[31]
+    updateZ result
+    updateC carry
+    updateV overflow
+    incAndFetchInstruction
+
+-- STRH (register) - Encoding T1
+strh_RegT1  :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+strh_RegT1 rm rn rt = do
+    offset <- alu (shlRegImm rm 0 apsr[29])
+    offset_addr <- alu (adcRegImm rn offset 0)
+    writeMemory offset_addr rt
+    incAndFetchInstruction
+
+-- STRH (immediate) - Encoding T1
+strh_ImmT1  :: ARMv6_M m => Register m -> Register m -> m ()
+strh_ImmT1 rn rt imm32 = do
+    offset_adr <- alu (adcRegImm rn imm32 0)
+    writeMemory offset_addr rt
