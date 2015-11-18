@@ -57,6 +57,7 @@ class Microprogram_v2 m => ARMv6_M m where
     zeroExtend              :: Register m -> Value -> Value -> m ()
     signExtend              :: Register m -> Value -> Value -> m ()
     signExtendOutVal        :: Value -> Value -> Register m -> Value -> Value -> Value
+    signExtendImmOutVal     :: Value -> Value -> Value -> Value -> Value -> Value
     movBitsOutVal           :: Value -> Value -> Register m -> Value -> Value -> Value
     uInt                    :: Register m -> Value -> Value -> Value
     reverseRegister         :: ReverseType m -> Register m -> Value
@@ -66,6 +67,7 @@ class Microprogram_v2 m => ARMv6_M m where
     instructionSynchronizationBarrier :: Value -> m ()
     -- send event function
     hint_SendEvent          :: m ()
+    callSupervisor          :: m ()
 
 -- *****************************************************************************
 -- *                          ARMv6-M Basic functions                          *
@@ -127,6 +129,11 @@ reverseRegister rType reg = do
 -- This procedure performs a send event hint
 hint_SendEvent :: ARMv6_M m => m ()
     -- TODO unclear from Specification
+
+-- Generate exception for SVC instruction.
+callSupervisor :: ARMv6_M m => m ()
+    -- TODO unclear from Specification
+
 
 -- *****************************************************************************
 -- *                          ARMv6-M Specification                            *
@@ -426,7 +433,7 @@ ldrsb_RegT1 rt rn rm = do
     offset <- alu (shlRegImm rm 0 apsr[29])
     offset_addr <- alu (adcRegImm rn offset 0)
     readMemory offset_addr rt
-    signExtend rt 31 8
+    signExtend 32 rt 7 0
     incAndFetchInstruction
 
 -- LDRSH (register) - Encoding T1
@@ -435,7 +442,7 @@ ldrsh_RegT1 rt rn rm = do
     offset <- alu (shlRegImm rm 0 apsr[29])
     offset_addr <- alu (adcRegImm rn offset 0)
     readMemory offset_addr rt
-    signExtend rt 31 16
+    signExtend 32 rt 15 0
     incAndFetchInstruction
 
 -- LSL (immediate) - Encoding T1
@@ -555,7 +562,7 @@ rev16_T1 rd rm = do
 -- REVSH - Encoding T1
 revsh_T1 :: ARMv6_M m => Register m -> Register m -> m ()
 revsh_T1 rd rm = do
-    result <- signExtendOutVal 31 8 rm 7 0
+    result <- signExtendOutVal 32 rm 7 0
     result <- movBits 7 0 rm 15 8
     writeRegister rd result
     incAndFetchInstruction
@@ -646,16 +653,16 @@ strb_RegT1 imm32 rn rt = do
 -- SXTH - Encoding T1
 sxth_T1 :: ARMv6_M m => Register m -> Register m -> m ()
 sxth_T1 rd rm = do
-    rotated   <- alu (rorRegImm rm 0)
-    extension <- signExtendOutImm 15 0 rotated 32
+    rotated   <- alu (rorRegImm rm 0 apsr[29])
+    extension <- signExtendImmOutVal 32 rotated 15 0
     writeRegister rd extension
     incAndFetchInstruction
 
 -- SXTB - Encoding T1
 sxtb_T1 :: ARMv6_M m => Register m -> Register m -> m ()
 sxtb_T1 rd rm = do
-    rotated   <- alu (rorRegImm rm 0)
-    extension <- signExtendOutImm 7 0 rotated 32
+    rotated   <- alu (rorRegImm rm 0 apsr[29])
+    extension <- signExtendImmOutVal 32 rotated 7 0
     writeRegister rd extension
     incAndFetchInstruction
 
@@ -666,18 +673,18 @@ svc_T1 imm32 = do
     incAndFetchInstruction
 
 -- SUB (SP - immediate) - Encoding T1
-sub_T1  :: ARMv6_M m => m ()
-sub_T1  imm32 = do
-    not <- alu (notVal imm32)
-    result <- alu (adcRegImm sp not 1)
+sub_ImmSPT1  :: ARMv6_M m => m ()
+sub_ImmSPT1  imm32 = do
+    notImm32 <- alu (notImm imm32)
+    result <- alu (adcRegImm sp notImm32 1)
     writeRegister sp result
 
 -- SUB (register) - Encoding T1
 sub_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
 sub_RegT1 rm rn rd = do
     shifted     <- alu (shlRegImm rm 0 apsr[29])
-    notshifted  <- alu (notVal shifted)
-    result      <- alu (adcRegImm rn notshifted 1)
+    notShifted  <- alu (notImm shifted)
+    result      <- alu (adcRegImm rn notShifted 1)
     writeRegister rd result
     updateN result[31]
     updateZ result
@@ -688,8 +695,8 @@ sub_RegT1 rm rn rd = do
 -- SUB (immediate) - Encoding T1
 sub_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
 sub_ImmT1 rn rd imm32 = do
-    not     <- alu (notVal imm32)
-    result  <- alu (adcRegImm rn not 1)
+    notImm32 <- alu (notImm imm32)
+    result  <- alu (adcRegImm rn notImm32 1)
     writeRegister rd result
     updateN result[31]
     updateZ result
@@ -701,12 +708,13 @@ sub_ImmT1 rn rd imm32 = do
 strh_RegT1  :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
 strh_RegT1 rm rn rt = do
     offset <- alu (shlRegImm rm 0 apsr[29])
-    offset_addr <- alu (adcRegImm rn offset 0)
-    writeMemory offset_addr rt
+    address <- alu (adcRegImm rn offset 0)
+    writeMemory address rt -- TODO half-word
     incAndFetchInstruction
 
 -- STRH (immediate) - Encoding T1
 strh_ImmT1  :: ARMv6_M m => Register m -> Register m -> m ()
 strh_ImmT1 rn rt imm32 = do
-    offset_adr <- alu (adcRegImm rn imm32 0)
-    writeMemory offset_addr rt
+    offset_addr <- alu (adcRegImm rn imm32 0)
+    writeMemory offset_adddr rt -- TODO half-word
+    incAndFetchInstruction
