@@ -54,12 +54,12 @@ class Microprogram_v2 m => ARMv6_M m where
     convAndExtend           :: SignType m -> Value -> Value -> Register m -> Value -> Value
     convAndExtendImm        :: Value -> Value -> Value -> Value -> Value
     currentModeIsPrivileged :: m Value
-    zeroExtend              :: Register m -> Value -> Value -> m ()
-    signExtend              :: Register m -> Value -> Value -> m ()
-    signExtendOutVal        :: Value -> Value -> Register m -> Value -> Value -> Value
-    signExtendImmOutVal     :: Value -> Value -> Value -> Value -> Value -> Value
+    zeroExtend              :: Value -> Register m -> Value -> Value -> m ()
+    signExtend              :: Value -> Register m -> Value -> Value -> m ()
+    signExtendOutVal        :: Value -> Register m -> Value -> Value -> Value
+    signExtendImmOutVal     :: Value -> Value -> Value -> Value -> Value
     movBitsOutVal           :: Value -> Value -> Register m -> Value -> Value -> Value
-    uInt                    :: Register m -> Value -> Value -> Value
+    uInt                    :: Value -> Register m -> Value -> Value -> Value
     reverseRegister         :: ReverseType m -> Register m -> Value
     -- barrier functions
     dataMemoryBarrier                 :: Value -> m ()
@@ -110,14 +110,30 @@ instructionSynchronizationBarrier :: ARMv6_M m => Value -> m ()
 instructionSynchronizationBarrier option4Bits = do
     -- TODO not clear from the documentation
 
--- extend the register with 0 from msb to lsb bits
-zeroExtend :: ARMv6_M m => Register m -> Value -> Value -> m ()
-zeroExtend reg msb lsb = do
+-- extract part of the register between msb and lsb bits
+uInt :: ARMv6_M m => Value -> Register m -> Value -> Value -> m ()
+uInt bits reg msb lsb = do
     -- TODO implement this function
 
--- extract part of the register between msb and lsb bits
-uInt :: ARMv6_M m => Register m -> Value -> Value -> m ()
-uInt reg msb lsb = do
+-- sign/unsign/zero extension functions
+zeroExtend :: ARMv6_M m => Value -> Register m -> Value -> Value -> m ()
+zeroExtend bits reg msb lsb = do
+    -- TODO implement this function
+
+signExtend :: ARMv6_M m => Value -> Register m -> Value -> Value -> m ()
+signExtend bits reg msb lsb = do
+    -- TODO implement this function
+
+signExtendOutVal :: ARMv6_M m => Value -> Register m -> Value -> Value -> Value
+signExtendOutVal bits reg msb lsb = do
+    -- TODO implement this function
+
+signExtendImmOutVal :: ARMv6_M m => Value -> Value -> Value -> Value -> Value
+signExtendImmOutVal bits imm32 msb lsb = do
+    -- TODO implement this function
+
+movBitsOutVal :: ARMv6_M m => Value -> Value -> Register m -> Value -> Value -> Value
+zeroExtend msbDest lsbDest imm32 msb lsb = do
     -- TODO implement this function
 
 -- This function reverse the order of the bytes inside a register
@@ -398,7 +414,7 @@ ldrb_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
 ldrb_ImmT1 imm32 rt rn = do
     offset_addr = alu (adcRegImm rn imm32 0)
     readMemory offset_addr rt
-    zeroExtend rt 31 8
+    zeroExtend 32 rt 7 0
     incAndFetchInstruction
 
 -- LDRB (register) - Encoding T1
@@ -407,7 +423,7 @@ ldrb_RegT1 rt rn rm = do
     offset <- alu (shlRegImm rm 0 apsr[29])
     offset_addr <- alu (adcRegImm rn offset 0)
     readMemory offset_addr rt
-    zeroExtend rt 31 8
+    zeroExtend 32 rt 7 0
     incAndFetchInstruction
 
 -- LDRH (immediate) - Encoding T1
@@ -415,7 +431,7 @@ ldrh_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
 ldrh_ImmT1 imm32 rt rn = do
     offset_addr = alu (adcRegImm rn imm32 0)
     readMemory offset_addr rt
-    zeroExtend rt 31 16
+    zeroExtend 32 rt 15 0
     incAndFetchInstruction
 
 -- LDRH (register) - Encoding T1
@@ -424,7 +440,7 @@ ldrh_RegT1 rt rn rm = do
     offset <- alu (shlRegImm rm 0 apsr[29])
     offset_addr <- alu (adcRegImm rn offset 0)
     readMemory offset_addr rt
-    zeroExtend rt 31 16
+    zeroExtend 32 rt 15 0
     incAndFetchInstruction
 
 -- LDRSB (register) - Encoding T1
@@ -458,7 +474,7 @@ lsl_ImmT1 imm5 rd rm = do
 -- LSL (register) - Encoding T1
 lsl_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
 lsl_RegT1 rdn rm = do
-    shift_n <- uInt rm 7 0
+    shift_n <- uInt 32 rm 7 0
     result <- alu(shlRegImm rdn shift_n apsr[29])
     writeRegister rdn result
     updateN result[31]
@@ -479,7 +495,7 @@ lsr_ImmT1 imm5 rdn rm = do
 -- LSR (register) - Encoding T1
 lsr_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
 lsr_RegT1 rm rdn = do
-    shift_n <- uInt rm 7 0
+    shift_n <- uInt 32 rm 7 0
     result <- alu(shlRegImm rdn shift_n apsr[29])
     writeRegister rdn result
     updateN result[31]
@@ -570,7 +586,7 @@ revsh_T1 rd rm = do
 -- ROR (register) - Encoding T1
 ror_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
 ror_RegT1 rm rdn = do
-    shift_n <- uInt rm 7 0
+    shift_n <- uInt 32 rm 7 0
     result <- alu(rorRegImm rdn shift_n apsr[29])
     writeRegister rdn result
     updateN result[31]
