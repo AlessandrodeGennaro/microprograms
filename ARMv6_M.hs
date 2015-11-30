@@ -60,6 +60,7 @@ class Microprogram_v2 m => ARMv6_M m where
     signExtendImmOutVal     :: Value -> Value -> Value -> Value -> Value
     movBitsOutVal           :: Value -> Value -> Register m -> Value -> Value -> Value
     uInt                    :: Value -> Register m -> Value -> Value -> Value
+    uIntImm                 :: Value -> Value -> Value -> Value -> Value
     reverseRegister         :: ReverseType m -> Register m -> Value
     -- barrier functions
     dataMemoryBarrier                 :: Value -> m ()
@@ -68,6 +69,10 @@ class Microprogram_v2 m => ARMv6_M m where
     -- send event function
     hint_SendEvent          :: m ()
     callSupervisor          :: m ()
+    -- bit accesing
+    writeBit                :: Register m -> Value -> Value -> m ()
+    readBit                 :: Register m -> Value -> Value
+    readBitImm              :: Value -> Value -> Value
 
 -- *****************************************************************************
 -- *                          ARMv6-M Basic functions                          *
@@ -93,7 +98,7 @@ updateV bit = do
 
 currentModeIsPrivileged :: ARMv6_M m => m Value
 currentModeIsPrivileged = do
-    return control[0] -- TODO implement this function
+    readBit control 0 -- TODO implement this function
                       -- bit 0 represents the nPRIV flag, privilege execution
                       -- Not completely clear from the documentation
                       -- this function checks also another undefined variable
@@ -158,22 +163,21 @@ callSupervisor :: ARMv6_M m => m ()
 -- ADC (register) - Encoding T1
 adc_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
 adcT1 rm rdn = do
-    shifted <- alu (shlRegImm rm 0 apsr[29]) -- APSR[29] = Carry flag
-    result <- alu (adcRegImm rdn shifted apsr[29])
+    shifted <- alu (shlRegImm rm 0 (readBit apsr 29)) -- APSR[29] = Carry flag
+    result <- alu (adcRegImm rdn shifted (readBit apsr 29))
     writeRegister rdn result
-    updateN result[31] --TODO Have a functionality to access any bit in a reg
+    updateN (readBitImm result 31) --TODO Have a functionality to access any bit in a reg
     updateZ result
     updateC carry
     updateV overflow
     incAndFetchInstruction
 
-
 -- ADD (immediate) - Encoding T1
-add_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
+add_ImmT1 :: ARMv6_M m => Register m -> Register m -> Value -> m ()
 add_ImmT1 rn rd imm32  = do -- TODO imm32 should be extended from imm3 in the decoding function
     result <- alu (adcRegImm rn imm32 0)
     writeRegister rd result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     updateV overflow
@@ -185,56 +189,57 @@ add_RegT1 rm rn rd = do
     shifted <- alu (shlRegImm rm 0 apsr[29])
     result <- alu (adcRegImm rn shifted 0)
     writeRegister rd result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     updateV overflow
     incAndFetchInstruction
 
 -- ADD (SP + immediate) - Encoding T1
-add_ImmSPT1 :: ARMv6_M m => Register m -> m ()
+add_ImmSPT1 :: ARMv6_M m => Register m -> Value -> m ()
 add_RegT1 rd imm32 = do
     result <- alu (adcRegImm sp imm32 0)
     writeRegister rd result
     incAndFetchInstruction
 
 -- ADD (SP + register) - Encoding T1
-add_RegSPT1 :: ARMv6_M m => Register m -> m ()
+add_RegSPT1 :: ARMv6_M m => Value -> Register m -> m ()
 add_RegT1 d rdm = do -- TODO d is integer representation of PC and it is computed
                      -- extending rdm
-    shifted <- alu (shlRegImm rdm 0 apsr[29])
+    shifted <- alu (shlRegImm rdm 0 (readBit apsr 29))
     result <- alu (adcRegImm sp shifted 0)
     if d == 15
         then writeRegister pc result
-        else writeRegister rdm result
-             increment pc
+        else do
+            writeRegister rdm result
+            increment pc
     fetchInstruction
 
 -- ADR - Encoding T1
-adrT1 :: ARMv6_M m => Register m -> m ()
-adrT1 rd imm32 = do
+adr_T1 :: ARMv6_M m => Register m -> Value -> m ()
+adr_T1 rd imm32 = do
     result <- alu (adcRegImm pc imm32 0)
     writeRegister rd result
     incAndFetchInstruction
 
 -- AND (register) - Encoding T1
-andT1 :: ARMv6_M m => Register m -> Register m -> m ()
-andT1 rm rdn = do
-    shifted <- alu (shlRegImm rm 0 apsr[29])
+and_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
+and_RegT1 rm rdn = do
+    shifted <- alu (shlRegImm rm 0 (readBit apsr 29))
     result <- alu (andRegImm rdn shifted)
     writeRegister rdn result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     incAndFetchInstruction
 
 -- ASR (immediate) - Encoding T1
-asr_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
+asr_ImmT1 :: ARMv6_M m => Register m -> Register m -> Value -> m ()
 asr_ImmT1 rm rd imm32 = do
     increment pc
-    result <- alu (shrRegImm rm imm32 apsr[29])
+    result <- alu (shrRegImm rm imm32 (readBit apsr 29))
     writeRegister rd result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     incAndFetchInstruction
@@ -243,15 +248,15 @@ asr_ImmT1 rm rd imm32 = do
 asr_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
 asr_RegT1 rd rn rm = do
     shift_n <- convAndExtend unsigned 31 0 rm 7 0 -- TODO convert and extend a portion of register
-    result  <- alu (shrRegImm rn shift_n apsr[32])
+    result  <- alu (shrRegImm rn shift_n (readBit apsr 29))
     writeRegister rd result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     incAndFetchInstruction
 
 -- B (unconditional immediate) - Encoding T1
-b :: ARMv6_M m => m ()
+b :: ARMv6_M m => Value -> m ()
 b imm32 = do
     nextInstrLocation <- alu (adcRegImm pc imm32 0)
     writeRegister pc nextInstrLocation
@@ -260,23 +265,23 @@ b imm32 = do
 -- BIC (register) - Encoding T1
 bic_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
 bic_RegT1 rm rdn = do
-    shifted <- alu (shlRegImm rm 0 apsr[29])
+    shifted <- alu (shlRegImm rm 0 (readBit apsr 29))
     shifted_negated <- alu (notVal shifted)
     result <- alu (andRegImm rdn shifted_negated)
     writeRegister rdn result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     incAndFetchInstruction
 
 -- BKPT (imm) - Encoding T1
-bkpt_T1 :: ARMv6_M m => m ()
+bkpt_T1 :: ARMv6_M m => Value -> m ()
 bkpt_T1 imm32 = do
     bkptInstrDebugEvent
     incAndFetchInstruction
 
 -- BL (immediate) - Encoding T1
-bl_ImmT1 :: ARMv6_M m => m ()
+bl_ImmT1 :: ARMv6_M m => Value -> m ()
 bl_ImmT1 imm32 = do
     currentPC <- readRegister pc
     lrTmp <- convAndExtendImm currentPC 31 1 1
@@ -305,39 +310,39 @@ bx_RegT1 rm = do
 -- CMN (register) - Encoding T1
 cmn_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
 cmn_RegT1 rn rm = do
-    shifted <- alu (shlRegImm rm 0 apsr[29])
+    shifted <- alu (shlRegImm rm 0 (readBit apsr 29))
     result <- alu (adcRegImm rn shifted 0)
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     updateV overflow
     incAndFetchInstruction
 
 -- CMP (immediate) - Encoding T1
-cmp_ImmT1 :: ARMv6_M m => Register m -> m ()
+cmp_ImmT1 :: ARMv6_M m => Register m -> Value -> m ()
 cmp_ImmT1 rn imm32 = do
     negated <- alu (notImm imm32)
     result <- alu (adcRegImm rn negated 1)
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     updateV overflow
     incAndFetchInstruction
 
 -- CMP (register) - Encoding T1
-cmp_RegT1 :: ARMv6_M m => Register m -> m ()
+cmp_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
 cmp_RegT1 rn rm = do
-    shifted <- alu (shlRegImm rm 0 apsr[29])
+    shifted <- alu (shlRegImm rm 0 (readBit apsr 29))
     negated <- alu (notImm shifted)
     result <- alu (adcRegImm rn negated 1)
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     updateV overflow
     incAndFetchInstruction
 
 -- CPS - Change Processor shifted_negated
-cps :: ARMv6_M m => m ()
+cps :: ARMv6_M m => Value -> m ()
 cps im = do
     if currentModeIsPrivileged
         then writeBit primask 0 im -- priority mask bit
@@ -351,13 +356,13 @@ cpy rd rn = do
     incAndFetchInstruction
 
 -- DMB - Encoding T1
-dmb :: ARMv6_M => m ()
+dmb :: ARMv6_M => Value -> m ()
 dmb option4Bits = do
     dataMemoryBarrier option4Bits
     incAndFetchInstruction
 
 -- DSB - Encoding T1
-dsb :: ARMv6_M => m ()
+dsb :: ARMv6_M => Value -> m ()
 dsb option4Bits = do
     dataSynchronisationBarrier option4Bits
     incAndFetchInstruction
@@ -365,16 +370,16 @@ dsb option4Bits = do
 -- EOR (register) - Encoding T1
 eor_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
 eor_RegT1 rdn rm = do
-    shifted <- alu (shlRegImm rm 0 apsr[29])
+    shifted <- alu (shlRegImm rm 0 (readBit apsr 29))
     result <- alu (xorRegImm rdn shifted)
     writeRegister rdn result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     incAndFetchInstruction
 
 -- ISB - Encoding T1
-isb :: ARMv6_M => m ()
+isb :: ARMv6_M => Value -> m ()
 isb option4Bits = do
     instructionSynchronizationBarrier option4Bits
     incAndFetchInstruction
@@ -387,7 +392,7 @@ ldm_T1 rn = do
     incAndFetchInstruction
 
 -- LDR (immediate) - Encoding T1
-ldr_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
+ldr_ImmT1 :: ARMv6_M m => Value -> Register m -> Register m -> m ()
 ldr_ImmT1 imm32 rt rn = do
     increment pc
     offset_addr = alu (adcRegImm rn imm32 0)
@@ -395,7 +400,7 @@ ldr_ImmT1 imm32 rt rn = do
     incAndFetchInstruction
 
 -- LDR (literal: PC + Immediate) - Encoding T1
-ldr_ImmPCT1 :: ARMv6_M m => Register m -> m ()
+ldr_ImmPCT1 :: ARMv6_M m => Register m -> Value -> m ()
 ldr_ImmPCT1 rt imm32 = do
     address = alu (adcRegImm pc imm32 0)
     readMemory address rt
@@ -404,13 +409,13 @@ ldr_ImmPCT1 rt imm32 = do
 -- LDR (register) - Encoding T1
 ldr_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
 ldr_RegT1 rt rn rm = do
-    offset <- alu (shlRegImm rm 0 apsr[29])
+    offset <- alu (shlRegImm rm 0 (readBit apsr 29))
     offset_addr <- alu (adcRegImm rn offset 0)
     readMemory offset_addr rt
     incAndFetchInstruction
 
 -- LDRB (immediate) - Encoding T1
-ldrb_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
+ldrb_ImmT1 :: ARMv6_M m => Value -> Register m -> Register m -> m ()
 ldrb_ImmT1 imm32 rt rn = do
     offset_addr = alu (adcRegImm rn imm32 0)
     readMemory offset_addr rt
@@ -420,14 +425,14 @@ ldrb_ImmT1 imm32 rt rn = do
 -- LDRB (register) - Encoding T1
 ldrb_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
 ldrb_RegT1 rt rn rm = do
-    offset <- alu (shlRegImm rm 0 apsr[29])
+    offset <- alu (shlRegImm rm 0 (readBit apsr 29))
     offset_addr <- alu (adcRegImm rn offset 0)
     readMemory offset_addr rt
     zeroExtend 32 rt 7 0
     incAndFetchInstruction
 
 -- LDRH (immediate) - Encoding T1
-ldrh_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
+ldrh_ImmT1 :: ARMv6_M m => Value -> Register m -> Register m -> m ()
 ldrh_ImmT1 imm32 rt rn = do
     offset_addr = alu (adcRegImm rn imm32 0)
     readMemory offset_addr rt
@@ -437,7 +442,7 @@ ldrh_ImmT1 imm32 rt rn = do
 -- LDRH (register) - Encoding T1
 ldrh_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
 ldrh_RegT1 rt rn rm = do
-    offset <- alu (shlRegImm rm 0 apsr[29])
+    offset <- alu (shlRegImm rm 0 (readBit apsr 29))
     offset_addr <- alu (adcRegImm rn offset 0)
     readMemory offset_addr rt
     zeroExtend 32 rt 15 0
@@ -446,7 +451,7 @@ ldrh_RegT1 rt rn rm = do
 -- LDRSB (register) - Encoding T1
 ldrsb_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
 ldrsb_RegT1 rt rn rm = do
-    offset <- alu (shlRegImm rm 0 apsr[29])
+    offset <- alu (shlRegImm rm 0 (readBit apsr 29))
     offset_addr <- alu (adcRegImm rn offset 0)
     readMemory offset_addr rt
     signExtend 32 rt 7 0
@@ -455,91 +460,93 @@ ldrsb_RegT1 rt rn rm = do
 -- LDRSH (register) - Encoding T1
 ldrsh_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
 ldrsh_RegT1 rt rn rm = do
-    offset <- alu (shlRegImm rm 0 apsr[29])
+    offset <- alu (shlRegImm rm 0 (readBit apsr 29))
     offset_addr <- alu (adcRegImm rn offset 0)
     readMemory offset_addr rt
     signExtend 32 rt 15 0
     incAndFetchInstruction
 
 -- LSL (immediate) - Encoding T1
-lsl_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
+lsl_ImmT1 :: ARMv6_M m => Value -> Register m -> Register m -> m ()
 lsl_ImmT1 imm5 rd rm = do
-    result <- alu(shlRegImm rm imm5 apsr[29])
+    result <- alu(shlRegImm rm imm5 (readBit apsr 29))
     writeRegister rd result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     incAndFetchInstruction
 
 -- LSL (register) - Encoding T1
-lsl_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+lsl_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
 lsl_RegT1 rdn rm = do
     shift_n <- uInt 32 rm 7 0
-    result <- alu(shlRegImm rdn shift_n apsr[29])
+    result <- alu(shlRegImm rdn shift_n (readBit apsr 29))
     writeRegister rdn result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     incAndFetchInstruction
 
 -- LSR (immediate) - Encoding T1
-lsr_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
+lsr_ImmT1 :: ARMv6_M m => Value -> Register m -> Register m -> m ()
 lsr_ImmT1 imm5 rdn rm = do
-    result <- alu(shrRegImm rm imm5 apsr[29])
+    result <- alu(shrRegImm rm imm5 (readBit apsr 29))
     writeRegister rdn result
-    updateN result[31]
+    updateN (readBit result 31)
     updateZ result
     updateC carry
     incAndFetchInstruction
 
 -- LSR (register) - Encoding T1
-lsr_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+lsr_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
 lsr_RegT1 rm rdn = do
     shift_n <- uInt 32 rm 7 0
-    result <- alu(shlRegImm rdn shift_n apsr[29])
+    result <- alu(shlRegImm rdn shift_n (readBit apsr 29))
     writeRegister rdn result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     incAndFetchInstruction
 
 -- MOV (immediate) - Encoding T1
-mov_ImmT1 :: ARMv6_M m => Register m -> m ()
+mov_ImmT1 :: ARMv6_M m => Register m -> Value -> m ()
 mov_ImmT1 rd imm32 = do
     writeRegister rd imm32
-    updateN imm32[31]
+    updateN (readBitImm imm32 31)
     updateZ imm32
     updateC carry
     incAndFetchInstruction
 
 -- MOV (register) - Encoding T1
-mov_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
+mov_RegT1 :: ARMv6_M m => Value -> Register m -> Register m -> m ()
 mov_RegT1 d rd rm = do
     result <- readRegister rm
     if d == 15
-        then writeRegister pc result
-             fetchInstruction
-        else writeRegister rd result
-             updateN result[31]
-             updateZ result
-             incAndFetchInstruction
+        then do
+            writeRegister pc result
+            fetchInstruction
+        else do
+            writeRegister rd result
+            updateN (readBitImm result 31)
+            updateZ result
+            incAndFetchInstruction
 
 -- MUL (register) - Encoding T1
-mul_T1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+mul_T1 :: ARMv6_M m => Register m -> Register m -> m ()
 mul_T1 rdm rn = do
     result <- alu (mulRegs rdm rn)
     writeRegister rdm result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     incAndFetchInstruction
 
 -- MVN (register) - Encoding T1
 mvn_RegT1 :: ARMv6_M m => Register m -> Register m ->  m ()
 mvn_RegT1 rd rm = do
-    shifted <- alu (shlRegImm rm 0 apsr[29])
+    shifted <- alu (shlRegImm rm 0 (readBit apsr 29))
     result <- alu (notImm shifted)
     writeRegister rd result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     incAndFetchInstruction
 
@@ -553,10 +560,10 @@ neg rd rm = do
 -- ORR (register) - Encoding T1
 orr_RegT1 ::  ARMv6_M m => Register m -> Register m -> m ()
 orr_RegT1 rdn rm = do
-    shifted <- alu (shlRegImm rm 0 apsr[29])
+    shifted <- alu (shlRegImm rm 0 (readBit apsr 29))
     result <- alu (orRegImm rdn shifted)
     writeRegister rdn result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     incAndFetchInstruction
@@ -584,12 +591,12 @@ revsh_T1 rd rm = do
     incAndFetchInstruction
 
 -- ROR (register) - Encoding T1
-ror_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+ror_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
 ror_RegT1 rm rdn = do
     shift_n <- uInt 32 rm 7 0
-    result <- alu(rorRegImm rdn shift_n apsr[29])
+    result <- alu(rorRegImm rdn shift_n (readBit apsr 29))
     writeRegister rdn result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     incAndFetchInstruction
@@ -600,7 +607,7 @@ rsb_ImmT1 rn rd imm32 = do
     negatedReg <- alu (notReg rn)
     result <- alu (adcRegImm negatedReg imm32 1)
     writeRegister rd result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     updateV overflow
@@ -609,11 +616,11 @@ rsb_ImmT1 rn rd imm32 = do
 -- SBC (register) - Encoding T1
 sbc_RegT1 :: ARMv6_M m => Register m -> Register m -> m ()
 sbc_RegT1 rm rdn = do
-    shifted <- alu (shlRegImm rm 0 apsr[29])
+    shifted <- alu (shlRegImm rm 0 (readBit apsr 29))
     negatedShift <- alu (notImm shifted)
-    result <- alu (adcRegImm rdn negatedShift apsr[29])
+    result <- alu (adcRegImm rdn negatedShift (readBit apsr 29))
     writeRegister rdn result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     updateV overflow
@@ -644,7 +651,7 @@ str_ImmT1 imm32 rn rt = do
 -- STR (register) - Encoding T1
 str_RegT1 :: ARMv6_M m => -> Register m -> Register m -> Register m -> m ()
 str_RegT1 rm rn rt = do
-    offset <- alu (shlRegImm rm 0 apsr[29])
+    offset <- alu (shlRegImm rm 0 (readBit apsr 29))
     address <- alu (adcRegImm rn offset 0)
     writeMemory address rt
     incAndFetchInstruction
@@ -659,17 +666,32 @@ strb_ImmT1 imm32 rn rt = do
 -- STRB (register) - Encoding T1
 strb_RegT1 :: ARMv6_M m => Value -> Register m -> Register m -> m ()
 strb_RegT1 imm32 rn rt = do
-    offset <- alu (shlRegImm rm 0 apsr[29])
+    offset <- alu (shlRegImm rm 0 (readBit apsr 29))
     address <- alu (adcRegImm rn offset 0)
     writeMemory address rt -- TODO Add number of bytes to transfer 1
     incAndFetchInstruction
 
 -------------------------- Paulius Tuesday 17th ----------------------
 
+-- STRH (register) - Encoding T1
+strh_RegT1  :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
+strh_RegT1 rm rn rt = do
+    offset <- alu (shlRegImm rm 0 (readBit apsr 29))
+    address <- alu (adcRegImm rn offset 0)
+    writeMemory address rt -- TODO half-word
+    incAndFetchInstruction
+
+-- STRH (immediate) - Encoding T1
+strh_ImmT1  :: ARMv6_M m => Register m -> Register m -> Value -> m ()
+strh_ImmT1 rn rt imm32 = do
+    offset_addr <- alu (adcRegImm rn imm32 0)
+    writeMemory offset_adddr rt -- TODO half-word
+    incAndFetchInstruction
+
 -- SXTH - Encoding T1
 sxth_T1 :: ARMv6_M m => Register m -> Register m -> m ()
 sxth_T1 rd rm = do
-    rotated   <- alu (rorRegImm rm 0 apsr[29])
+    rotated   <- alu (rorRegImm rm 0 (readBit apsr 29))
     extension <- signExtendImmOutVal 32 rotated 15 0
     writeRegister rd extension
     incAndFetchInstruction
@@ -677,20 +699,20 @@ sxth_T1 rd rm = do
 -- SXTB - Encoding T1
 sxtb_T1 :: ARMv6_M m => Register m -> Register m -> m ()
 sxtb_T1 rd rm = do
-    rotated   <- alu (rorRegImm rm 0 apsr[29])
+    rotated   <- alu (rorRegImm rm 0 (readBit apsr 29))
     extension <- signExtendImmOutVal 32 rotated 7 0
     writeRegister rd extension
     incAndFetchInstruction
 
 -- SVC - Encoding T1
-svc_T1  :: ARMv6_M m => m ()
+svc_T1 :: ARMv6_M m => m ()
 svc_T1 imm32 = do
     callSupervisor
     incAndFetchInstruction
 
 -- SUB (SP - immediate) - Encoding T1
-sub_ImmSPT1  :: ARMv6_M m => m ()
-sub_ImmSPT1  imm32 = do
+sub_ImmSPT1 :: ARMv6_M m => Value -> m ()
+sub_ImmSPT1 imm32 = do
     notImm32 <- alu (notImm imm32)
     result <- alu (adcRegImm sp notImm32 1)
     writeRegister sp result
@@ -698,39 +720,95 @@ sub_ImmSPT1  imm32 = do
 -- SUB (register) - Encoding T1
 sub_RegT1 :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
 sub_RegT1 rm rn rd = do
-    shifted     <- alu (shlRegImm rm 0 apsr[29])
+    shifted     <- alu (shlRegImm rm 0 (readBit apsr 29))
     notShifted  <- alu (notImm shifted)
     result      <- alu (adcRegImm rn notShifted 1)
     writeRegister rd result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     updateV overflow
     incAndFetchInstruction
 
 -- SUB (immediate) - Encoding T1
-sub_ImmT1 :: ARMv6_M m => Register m -> Register m -> m ()
+sub_ImmT1 :: ARMv6_M m => Register m -> Register m -> Value -> m ()
 sub_ImmT1 rn rd imm32 = do
     notImm32 <- alu (notImm imm32)
     result  <- alu (adcRegImm rn notImm32 1)
     writeRegister rd result
-    updateN result[31]
+    updateN (readBitImm result 31)
     updateZ result
     updateC carry
     updateV overflow
     incAndFetchInstruction
 
--- STRH (register) - Encoding T1
-strh_RegT1  :: ARMv6_M m => Register m -> Register m -> Register m -> m ()
-strh_RegT1 rm rn rt = do
-    offset <- alu (shlRegImm rm 0 apsr[29])
-    address <- alu (adcRegImm rn offset 0)
-    writeMemory address rt -- TODO half-word
+
+-- MRS - Encoding T1
+mrs_T1 :: ARMv6_M m => Register m -> Value -> m ()
+mrs_T1 rd sysM = do
+    writeRegister rd 0
+    sysM_7_3 <- uIntImm 5 sysM 7 3
+    case sysM_7_3 of
+        0 do
+            if (readBitImm sysM 0) == 1
+                then do
+                    val <- uInt 9 ipsr 8 0
+                    writeRegisterBits rd val 8 0
+            if (readBitImm sysM 1) == 1
+                then writeBit rd 24 0
+            if (readBitImm sysM 2) == 0
+                then do
+                    val <- uInt 5 apsr 31 27
+                    writeRegisterBits rd val 31 27
+        1 do
+            sysM_2_0 <- uIntImm 3 sysM 2 0
+            case sysM_2_0 of
+                0 do
+                    sp_main_val <- readRegister sp_main
+                    writeRegister rd sp_main
+                1 do
+                    sp_process_val <- readRegister sp_process
+                    writeRegister rd sp_process_val
+        2 do
+            sysM_2_0 <- uIntImm 3 sysM 2 0
+            case sysM_2_0 of
+                0 do
+                    writeBit rd 0 (readBit primask 0)
+                4 do
+                    val <- uInt 2 control 1 0
+                    writeRegisterBits rd val 1 0
     incAndFetchInstruction
 
--- STRH (immediate) - Encoding T1
-strh_ImmT1  :: ARMv6_M m => Register m -> Register m -> m ()
-strh_ImmT1 rn rt imm32 = do
-    offset_addr <- alu (adcRegImm rn imm32 0)
-    writeMemory offset_adddr rt -- TODO half-word
+-- MSR (register) - Encoding T1
+msr_RegT1 :: ARMv6_M m => Register m -> Value ->  m ()
+msr_RegT1 rn sysM = do
+    sysM_7_3 <- uIntImm 5 sysM 7 3
+    case sysM_7_3 of
+        0 do
+            if (readBitImm sysM 2) == 0
+                then do
+                    val <- uInt 5 rn 31 27
+                    writeRegisterBits apsr val 31 27
+        1 do
+            if currentModeIsPrivileged == 1
+                then do
+                    sysM_2_0 <- uIntImm 3 sysM 2 0
+                    case sysM_2_0 of
+                        0 do
+                            sp_main_val <- readRegister rn -- TODO SP_main = R[n]<31:2> : '00'
+                            writeRegister sp_main sp_main_val
+                        1 do
+                            sp_process_val <- readRegister rn -- TODO SP_process = R[n]<31:2> : '00'
+                            writeRegister sp_process sp_process_val
+        2 do
+            if currentModeIsPrivileged == 1
+                then do
+                    sysM_2_0 <- uIntImm 3 sysM 2 0
+                    case sysM_2_0 of
+                        0 do
+                            writeBit primask 0 (readBit rn 0)
+                        4 do
+                            -- if currentMode == Mode_thread TODO
+                            writeBit control 1 (readBit rn 1)
+                            writeBit control 0 (readBit rn 0)
     incAndFetchInstruction
