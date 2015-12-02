@@ -115,6 +115,7 @@ instructionSynchronizationBarrier :: ARMv6_M m => Value -> m ()
 instructionSynchronizationBarrier option4Bits = do
     -- TODO not clear from the documentation
 
+
 -- extract part of the register between msb and lsb bits
 uInt :: ARMv6_M m => Value -> Register m -> Value -> Value -> m ()
 uInt bits reg msb lsb = do
@@ -123,6 +124,7 @@ uInt bits reg msb lsb = do
 -- sign/unsign/zero extension functions
 zeroExtend :: ARMv6_M m => Value -> Register m -> Value -> Value -> m ()
 zeroExtend bits reg msb lsb = do
+    unknown
     -- TODO implement this function
 
 signExtend :: ARMv6_M m => Value -> Register m -> Value -> Value -> m ()
@@ -155,6 +157,20 @@ hint_SendEvent :: ARMv6_M m => m ()
 callSupervisor :: ARMv6_M m => m ()
     -- TODO unclear from Specification
 
+-- Write a value into a specific bit in a register
+writeBit :: ARMv6_M m => Register m -> Value -> Value -> m ()
+writeBit reg bit val = do
+    -- TODO implement this function
+
+-- Read a bit of a register
+readBit :: ARMv6_M m => Register m -> Value -> m Value
+readBit reg bit = do
+    -- TODO implement this function
+
+-- Read a bit from an immediate value
+readBitImm :: ARMv6_M m => Value -> Value -> m Value
+readBitImm imm bit = do
+    --TODO implement this function
 
 -- *****************************************************************************
 -- *                          ARMv6-M Specification                            *
